@@ -1,0 +1,473 @@
+---
+title: "Cx43 puncta per cell: differential expression analysis"
+output:
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: console
+date: "`r format(Sys.time())`"
+---
+
+# Load libraries
+```{r}
+library(stringr)
+library(MASS)
+library(car)
+library(AICcmodavg)
+library(effectsize)
+```
+
+# Define functions
+```{r}
+fitCandidateModels <- function(varName){
+  candidateModels <- list()
+  candidateModels[[1]] <- eval(parse(text=str_c("lm(",varName,"~ group, data=dat)")))
+  candidateModels[[2]] <- eval(parse(text=str_c("lm(",varName,"~ group + batch, data=dat)")))
+  candidateModels[[3]] <- eval(parse(text=str_c("lm(",varName,"~ group + Age, data=dat)")))
+  candidateModels[[4]] <- eval(parse(text=str_c("lm(",varName,"~ group + Gender, data=dat)")))
+  candidateModels[[5]] <- eval(parse(text=str_c("lm(",varName,"~ group + batch + Age, data=dat)")))
+  candidateModels[[6]] <- eval(parse(text=str_c("lm(",varName,"~ group + batch + Gender, data=dat)")))
+  candidateModels[[7]] <- eval(parse(text=str_c("lm(",varName,"~ group + Age + Gender, data=dat)")))
+  candidateModels[[8]] <- eval(parse(text=str_c("lm(",varName,"~ group + batch + Age + Gender, data=dat)")))
+  return(candidateModels)
+}
+
+modelNames <- c("group",
+"group+batch",
+"group+Age",
+"group+Gender",
+"group+batch+Age",
+"group+batch+Gender",
+"group+Age+Gender",
+"group+batch+Age+Gender")
+
+
+processVariable <- function(varName, diag=TRUE){
+  cat("\n\n## ", varName,"\n")
+  cat("\n\n### Performance of candidate models\n")
+  candidateModels <- fitCandidateModels(varName)
+  resTab <- aictab(cand.set = candidateModels, modnames = modelNames)
+  print(knitr::kable(resTab))
+  
+  idxBestModel <- as.numeric(row.names(resTab)[1])
+  if(diag){
+    cat("\n\n### Diagnostics for best model")
+    plot(candidateModels[[idxBestModel]])
+  }
+  (shapiroResid <- shapiro.test(candidateModels[[idxBestModel]]$residuals))
+  return(list(indexBest=idxBestModel, bestModel=candidateModels[[idxBestModel]], shapiroResidP=shapiroResid$p.value))
+}
+```
+
+# Load data
+Raw western blot data have been transformed using Box-Cox method (see Cx43_puncta_per_cell_Box_Cox_transformation.html)
+```{r}
+donors <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/donor_metadata.csv", row.names=1, na.strings="NA")
+
+puncta <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/Cx43_puncta_per_cell_BoxCox_transformed.csv", row.names=1)
+punctaRaw <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/Cx43 puncta per cell - Sheet1.csv", row.names=1)
+punctaRaw <- punctaRaw[c(18:29, 10:17, 1:9, 30:40),]
+
+group <- c(rep("P", 20),rep("C", 20))
+groupColor <- c(rep("red", 20),rep("blue", 20))
+
+batches <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/Cx43_puncta_batches.csv", row.names=1, stringsAsFactors = TRUE)
+batches <- batches[c(18:29, 10:17, 1:9, 30:40),]
+row.names(batches)==row.names(puncta)
+names(batches)==names(puncta)
+```
+
+Create data.frame:
+```{r}
+batch <- rep(NA,40)
+dat <- data.frame(cbind(group,
+                        batch,
+                        donors,
+                        puncta$Frontal.cortex,
+                        puncta$Parietal.cortex,
+                        puncta$Insular.cortex,
+                        puncta$BG.Putamen,
+                        puncta$BG.Globus.P,
+                        puncta$BG.Caudate,
+                        puncta$Midbrain.SN))
+
+varNames <- names(dat)[21:27] <- c("Frontal.cortex",
+                "Parietal.cortex",
+                "Insular.cortex",
+                "BG.Putamen",
+                "BG.Globus.P",
+                "BG.Caudate",
+                "Midbrain.SN")
+```
+
+# Find best model for each variable
+```{r, results="asis"}
+bestModels <- vector("list", length(varNames))
+for (i in 1:length(varNames)){
+  dat$batch<-rep(NA,40)
+  dat$batch<-batches[,i]
+  bestModels[[i]] <- processVariable(varName=varNames[i],
+                                     diag=F)
+}
+
+length(bestModels)
+
+bmDF <- data.frame(cbind(Variable=varNames, Best.Model=rep(NA,length(bestModels)), ShapiroResidP=rep(NA,length(bestModels))))
+for (i in 1:length(bestModels)){
+  bmDF$Best.Model[i]<- modelNames[bestModels[[i]]$indexBest]
+  bmDF$ShapiroResidP[i] <- bestModels[[i]]$shapiroResidP
+}
+
+bmDF$ShapiroResidP <- round(as.numeric(bmDF$ShapiroResidP),3)
+names(bmDF) <- c("Variable", "Best Model", "Shapiro-Wilk Test on Model Residuals (p-value)")
+  
+cat("\n")
+print(knitr::kable(bmDF))
+```
+
+***N.B. Model residuals should follow a normal distribution. Here we see that the residuals of the models for BG.Caudate do not. However, as we'll see in the next section, we are not claiming that this variable differs in expression between Parkinson's Disease patients and controls.***
+
+# ANOVA
+
+```{r}
+anovaRawP <- rep(NA,length(bestModels))
+epsilonSquared <- rep(NA, length(bestModels))
+meanControl <- meanPD <- sdControl <- sdPD <- rep(NA, length(varNames))
+
+for (i in 1:length(bestModels)){
+  anovaTab <- Anova(bestModels[[i]]$bestModel, type="II")
+  anovaRawP[i] <- anovaTab$`Pr(>F)`[row.names(anovaTab)=="group"]
+  epsilonSquared[i] <- epsilon_squared(anovaTab)[[2]][1]
+  rawVar <- eval(parse(text=str_c("punctaRaw$",varNames[i])))
+  meanControl[i] <- mean(rawVar[group=="C"], na.rm=TRUE)
+  sdControl[i] <- sd(rawVar[group=="C"], na.rm=TRUE)
+  meanPD[i] <- mean(rawVar[group=="P"], na.rm=TRUE)
+  sdPD[i] <- sd(rawVar[group=="P"], na.rm=TRUE)
+}
+
+holm <- p.adjust(anovaRawP, method="holm")
+bh <- p.adjust(anovaRawP, method="BH")
+
+effectInterpretation <- interpret_epsilon_squared(epsilonSquared)
+
+nControl <- apply(puncta[group=="C",],2,function(x){length(x)-sum(is.na(x))})
+nPD <- apply(puncta[group=="P",],2,function(x){length(x)-sum(is.na(x))})
+
+resTab <- data.frame(cbind(varNames, nControl, nPD, 
+                           format(round(anovaRawP,4), scientific=FALSE), 
+                           format(round(holm,4), scientific=FALSE), 
+                           format(round(bh,4), scientific=FALSE), 
+                           round(epsilonSquared,4), effectInterpretation,
+                     meanControl, sdControl, meanPD, sdPD))
+names(resTab) <- c("Variable", "Control n", "PD n", "Raw p-value", "Adj. p-value (FWER)", "Adj. p-value (FDR)", "Effect size (epsilon2)", "Effect size (qualitative)",
+                   "Mean Control", "SD Control", "Mean PD", "SD PD")
+knitr::kable(resTab)
+```
+
+***Notes***
+
+* p-values are for the difference between the Parkinson's Disease patients and controls.
+* FWER: Family-wise error rate
+* FDR: False discovery rate
+* Effect size ($\epsilon^2$) is the proportion of the variation in the protein expression variable explained by group membership (control *vs* PD). 
+* Means and SDs are for raw, rather than Box-Cox transformed data. However, linear modelling and ANOVA used Box-Cox transformed data.
+
+***Field's (2013) qualitative interpretation of effect size***
+
+* ($\epsilon^2$) < 0.01 - Very small
+
+* 0.01 <= ($\epsilon^2$) < 0.06 - Small
+
+* 0.16 <= ($\epsilon^2$) < 0.14 - Medium
+
+* ($\epsilon^2$) >= 0.14  - Large
+
+## Boxplots
+
+### Frontal.cortex
+```{r}
+par(mfrow=c(1,2))
+boxplot(punctaRaw$Frontal.cortex~group, main="Raw", ylab="Puncta per cell")
+boxplot(puncta$Frontal.cortex~group, main="Transformed", ylab="Box-Cox transformed puncta per cell")
+```
+
+### Parietal.cortex
+```{r}
+par(mfrow=c(1,2))
+boxplot(punctaRaw$Parietal.cortex~group, main="Raw", ylab="Puncta per cell")
+boxplot(puncta$Parietal.cortex~group, main="Transformed", ylab="Box-Cox transformed puncta per cell")
+```
+
+### Insular.cortex
+```{r}
+par(mfrow=c(1,2))
+boxplot(punctaRaw$Insular.cortex~group, main="Raw", ylab="Puncta per cell")
+boxplot(puncta$Insular.cortex~group, main="Transformed", ylab="Box-Cox transformed puncta per cell")
+```
+
+### BG.Putamen
+```{r}
+par(mfrow=c(1,2))
+boxplot(punctaRaw$BG.Putamen~group, main="Raw", ylab="Puncta per cell")
+boxplot(puncta$BG.Putamen~group, main="Transformed", ylab="Box-Cox transformed puncta per cell")
+```
+
+### BG.Globus.P 
+```{r}
+par(mfrow=c(1,2))
+boxplot(punctaRaw$BG.Globus.P~group, main="Raw", ylab="Puncta per cell")
+boxplot(puncta$BG.Globus.P~group, main="Transformed", ylab="Box-Cox transformed puncta per cell")
+```
+
+### BG.Caudate
+```{r}
+par(mfrow=c(1,2))
+boxplot(punctaRaw$BG.Caudate~group, main="Raw", ylab="Puncta per cell")
+boxplot(puncta$BG.Caudate~group, main="Transformed", ylab="Box-Cox transformed puncta per cell")
+```
+
+### Midbrain.SN
+```{r}
+par(mfrow=c(1,2))
+boxplot(punctaRaw$Midbrain.SN~group, main="Raw", ylab="Puncta per cell")
+boxplot(puncta$Midbrain.SN~group, main="Transformed", ylab="Box-Cox transformed puncta per cell")
+```
+
+```{r}
+par(mfrow=c(1,1))
+```
+
+# Importance of the other variables in the best linear models
+
+## Models with additional variables
+* Insular.cortex	group+batch	
+* BG.Putamen	group+batch+Age+Gender	
+* BG.Globus.P	group+batch+Age	
+* BG.Caudate	group+Age+Gender	
+
+## Insular.cortex	group+batch
+*Model 3 in list of best models.*
+
+Repeat ANOVA:
+```{r}
+anovaTable <- Anova(bestModels[[3]]$bestModel, type="II")
+```
+
+**Raw p-value for batch:**
+```{r}
+anovaTable$`Pr(>F)`[row.names(anovaTable)=="batch"]
+```
+
+**Effect size $\epsilon^2$ of batch:**
+```{r}
+es <- epsilon_squared(anovaTable)
+(es <- es$Epsilon2_partial[es$Parameter=="batch"])
+```
+
+**Qualitative interpretation of effect size of batch:**
+```{r}
+interpret_epsilon_squared(es)
+```
+
+**Boxplot batch**
+```{r}
+boxplot(punctaRaw$Insular.cortex~batches$Insular.cortex, main="Raw", xlab="Batch", ylab="Puncta per cell")
+boxplot(puncta$Insular.cortex~batches$Insular.cortex, main="Transformed", xlab="Batch", ylab="Box-Cox transformed puncta per cell")
+```
+
+## BG.Putamen	group+batch+Age+Gender
+*Model 4 in list of best models.*
+
+Repeat ANOVA:
+```{r}
+anovaTable <- Anova(bestModels[[4]]$bestModel, type="II")
+```
+
+**Raw p-value for batch:**
+```{r}
+anovaTable$`Pr(>F)`[row.names(anovaTable)=="batch"]
+```
+
+**Effect size $\epsilon^2$ of batch:**
+```{r}
+es <- epsilon_squared(anovaTable)
+(es <- es$Epsilon2_partial[es$Parameter=="batch"])
+```
+
+**Qualitative interpretation of effect size of batch:**
+```{r}
+interpret_epsilon_squared(es)
+```
+
+**Boxplot batch**
+```{r}
+boxplot(punctaRaw$BG.Putamen~batches$BG.Putamen, main="Raw", xlab="Batch", ylab="Puncta per cell")
+boxplot(puncta$BG.Putamen~batches$BG.Putamen, main="Transformed", xlab="Batch", ylab="Box-Cox transformed puncta per cell")
+```
+
+**Raw p-value for age:**
+```{r}
+anovaTable$`Pr(>F)`[row.names(anovaTable)=="Age"]
+```
+
+**Effect size $\epsilon^2$ of age:**
+```{r}
+es <- epsilon_squared(anovaTable)
+(es <- es$Epsilon2_partial[es$Parameter=="Age"])
+```
+
+**Qualitative interpretation of effect size of age:**
+```{r}
+interpret_epsilon_squared(es)
+```
+
+**Scatterplot Age**
+```{r}
+plot(dat$Age, punctaRaw$BG.Putamen, pch=group, col=groupColor, main="Raw", xlab="Age (years)", ylab="Puncta per cell")
+plot(dat$Age, puncta$BG.Putamen, pch=group, col=groupColor, main="Transformed", xlab="Age (years)", ylab="Box-Cox transformed puncta per cell")
+```
+
+**Raw p-value for gender:**
+```{r}
+anovaTable$`Pr(>F)`[row.names(anovaTable)=="Gender"]
+```
+
+**Effect size $\epsilon^2$ of gender:**
+```{r}
+es <- epsilon_squared(anovaTable)
+(es <- es$Epsilon2_partial[es$Parameter=="Gender"])
+```
+
+**Qualitative interpretation of effect size of gender:**
+```{r}
+interpret_epsilon_squared(es)
+```
+
+**Boxplot gender**
+```{r}
+boxplot(punctaRaw$BG.Putamen~dat$Gender, main="Raw", xlab="Batch", ylab="Puncta per cell")
+boxplot(puncta$BG.Putamen~dat$Gender, main="Transformed", xlab="Batch", ylab="Box-Cox transformed puncta per cell")
+```
+
+
+
+## BG.Globus.P	group+batch+Age	
+*Model 5 in list of best models.*
+
+Repeat ANOVA:
+```{r}
+anovaTable <- Anova(bestModels[[5]]$bestModel, type="II")
+```
+
+**Raw p-value for batch:**
+```{r}
+anovaTable$`Pr(>F)`[row.names(anovaTable)=="batch"]
+```
+
+**Effect size $\epsilon^2$ of batch:**
+```{r}
+es <- epsilon_squared(anovaTable)
+(es <- es$Epsilon2_partial[es$Parameter=="batch"])
+```
+
+**Qualitative interpretation of effect size of batch:**
+```{r}
+interpret_epsilon_squared(es)
+```
+
+**Boxplot batch**
+```{r}
+boxplot(punctaRaw$BG.Globus.P~batches$BG.Globus.P, main="Raw", xlab="Batch", ylab="Puncta per cell")
+boxplot(puncta$BG.Globus.P~batches$BG.Globus.P, main="Transformed", xlab="Batch", ylab="Box-Cox transformed puncta per cell")
+```
+
+**Raw p-value for age:**
+```{r}
+anovaTable$`Pr(>F)`[row.names(anovaTable)=="Age"]
+```
+
+**Effect size $\epsilon^2$ of age:**
+```{r}
+es <- epsilon_squared(anovaTable)
+(es <- es$Epsilon2_partial[es$Parameter=="Age"])
+```
+
+**Qualitative interpretation of effect size of age:**
+```{r}
+interpret_epsilon_squared(es)
+```
+
+**Scatterplot Age**
+```{r}
+plot(dat$Age, punctaRaw$BG.Globus.P, pch=group, col=groupColor, main="Raw", xlab="Age (years)", ylab="Puncta per cell")
+plot(dat$Age, puncta$BG.Globus.P, pch=group, col=groupColor, main="Transformed", xlab="Age (years)", ylab="Box-Cox transformed puncta per cell")
+```
+
+
+## BG.Caudate	group+Age+Gender
+*Model 6 in list of best models.*
+
+Repeat ANOVA:
+```{r}
+anovaTable <- Anova(bestModels[[6]]$bestModel, type="II")
+```
+
+**Raw p-value for age:**
+```{r}
+anovaTable$`Pr(>F)`[row.names(anovaTable)=="Age"]
+```
+
+**Effect size $\epsilon^2$ of age:**
+```{r}
+es <- epsilon_squared(anovaTable)
+(es <- es$Epsilon2_partial[es$Parameter=="Age"])
+```
+
+**Qualitative interpretation of effect size of age:**
+```{r}
+interpret_epsilon_squared(es)
+```
+
+**Scatterplot Age**
+```{r}
+plot(dat$Age, punctaRaw$BG.Caudate, pch=group, col=groupColor, main="Raw", xlab="Age (years)", ylab="Puncta per cell")
+plot(dat$Age, puncta$BG.Caudate, pch=group, col=groupColor, main="Transformed", xlab="Age (years)", ylab="Box-Cox transformed puncta per cell")
+```
+
+**Raw p-value for gender:**
+```{r}
+anovaTable$`Pr(>F)`[row.names(anovaTable)=="Gender"]
+```
+
+**Effect size $\epsilon^2$ of gender:**
+```{r}
+es <- epsilon_squared(anovaTable)
+(es <- es$Epsilon2_partial[es$Parameter=="Gender"])
+```
+
+**Qualitative interpretation of effect size of gender:**
+```{r}
+interpret_epsilon_squared(es)
+```
+
+**Boxplot gender**
+```{r}
+boxplot(punctaRaw$BG.Caudate~dat$Gender, main="Raw", xlab="Batch", ylab="Puncta per cell")
+boxplot(puncta$BG.Caudate~dat$Gender, main="Transformed", xlab="Batch", ylab="Box-Cox transformed puncta per cell")
+```
+
+
+# References
+
+```{r}
+citation()
+citation("stringr")
+citation("MASS")
+citation("car")
+citation("AICcmodavg")
+citation("effectsize")
+```
+
+Field, A (2013) Discovering statistics using IBM SPSS Statistics. Fourth Edition. Sage:London.
+
+

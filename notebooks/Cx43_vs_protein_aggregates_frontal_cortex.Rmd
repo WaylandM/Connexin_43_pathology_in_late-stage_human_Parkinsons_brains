@@ -1,0 +1,134 @@
+---
+title: "Cx43 vs protein aggregates: frontal cortex"
+output:
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: console
+date: "`r format(Sys.time())`"
+---
+
+
+# Load libraries
+```{r}
+library(stringr)
+library(corrplot)
+library(Hmisc)
+```
+
+# Load data
+```{r}
+dat <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/Cx43_vs_aggregates_frontal_cortex.csv", header=T, na.string="N/A")
+row.names(dat) <- dat$Donor
+dat$Donor <- NULL
+
+group <- c(rep("P", 20),rep("C", 20))
+groupColor <- ifelse(group=="P", "red", "blue")
+
+knitr::kable(dat)
+```
+
+# Scatterplot matrix
+```{r}
+pairs(dat, pch=group, col=groupColor)
+```
+
+# Correlation matrix
+We’ll use Spearman’s rho statistic which measures the strength and direction of any monotonic association between two variables. N.B. relationship does not need to be linear.
+
+## All donors
+### Summary of protein aggregates
+```{r}
+tbl <- as.data.frame(table(dat$a.syn))
+names(tbl) <- c("Alpha-synuclein", "Frequency")
+knitr::kable(tbl, caption="Alpha-synuclein", format = "html", table.attr = "style='width:30%;'")
+```
+
+```{r}
+tbl <- as.data.frame(table(dat$Tau))
+names(tbl) <- c("Tau", "Frequency")
+knitr::kable(tbl, caption="Tau", format = "html", table.attr = "style='width:30%;'")
+```
+
+```{r}
+tbl <- as.data.frame(table(dat$Am.b))
+names(tbl) <- c("Amyloid beta", "Frequency")
+knitr::kable(tbl, caption="Amyloid beta", format = "html", table.attr = "style='width:30%;'")
+```
+
+### Correlation analysis
+```{r}
+corMat <- rcorr(as.matrix(dat), type="spearman")
+corrplot(corMat$r, method="circle")
+corMatTable <- round(corMat$r, 3)
+corMatTable[upper.tri(corMatTable, diag=TRUE)] <- ""
+corMatP <- round(corMat$P, 3)
+corMatP <- ifelse(corMatP==0, "<0.001", corMatP)
+corMatTable[upper.tri(corMatTable)] <- corMatP[upper.tri(corMatP)]
+knitr::kable(corMatTable, caption="Correlation coefficients (Spearman's rho) are below the diagonal and p-values are above the diagonal.")
+```
+
+## Donors with Parkinson's disease
+### Summary of protein aggregates
+```{r}
+tbl <- as.data.frame(table(dat$a.syn[group=="P"]))
+names(tbl) <- c("Alpha-synuclein", "Frequency")
+knitr::kable(tbl, caption="Alpha-synuclein", format = "html", table.attr = "style='width:30%;'")
+```
+
+```{r}
+tbl <- as.data.frame(table(dat$Tau[group=="P"]))
+names(tbl) <- c("Tau", "Frequency")
+knitr::kable(tbl, caption="Tau", format = "html", table.attr = "style='width:30%;'")
+```
+
+```{r}
+tbl <- as.data.frame(table(dat$Am.b[group=="P"]))
+names(tbl) <- c("Amyloid beta", "Frequency")
+knitr::kable(tbl, caption="Amyloid beta", format = "html", table.attr = "style='width:30%;'")
+```
+
+### Correlation analysis
+```{r}
+corMat <- rcorr(as.matrix(dat[group=="P",]), type="spearman")
+corrplot(corMat$r, method="circle")
+corMatTable <- round(corMat$r, 3)
+corMatTable[upper.tri(corMatTable, diag=TRUE)] <- ""
+corMatP <- round(corMat$P, 3)
+corMatP <- ifelse(corMatP==0, "<0.001", corMatP)
+corMatTable[upper.tri(corMatTable)] <- corMatP[upper.tri(corMatP)]
+knitr::kable(corMatTable, caption="Correlation coefficients (Spearman's rho) are below the diagonal and p-values are above the diagonal.")
+```
+
+## Donors in control group
+### Summary of protein aggregates
+```{r}
+tbl <- as.data.frame(table(dat$a.syn[group=="C"]))
+names(tbl) <- c("Alpha-synuclein", "Frequency")
+knitr::kable(tbl, caption="Alpha-synuclein", format = "html", table.attr = "style='width:30%;'")
+```
+
+```{r}
+tbl <- as.data.frame(table(dat$Tau[group=="C"]))
+names(tbl) <- c("Tau", "Frequency")
+knitr::kable(tbl, caption="Tau", format = "html", table.attr = "style='width:30%;'")
+```
+
+```{r}
+tbl <- as.data.frame(table(dat$Am.b[group=="C"]))
+names(tbl) <- c("Amyloid beta", "Frequency")
+knitr::kable(tbl, caption="Amyloid beta", format = "html", table.attr = "style='width:30%;'")
+```
+
+### Correlation analysis
+```{r}
+corMat <- rcorr(as.matrix(dat[group=="C",c(1,3,4)]), type="spearman")
+corrplot(corMat$r, method="circle")
+corMatTable <- round(corMat$r, 3)
+corMatTable[upper.tri(corMatTable, diag=TRUE)] <- ""
+corMatP <- round(corMat$P, 3)
+corMatP <- ifelse(corMatP==0, "<0.001", corMatP)
+corMatTable[upper.tri(corMatTable)] <- corMatP[upper.tri(corMatP)]
+knitr::kable(corMatTable, caption="Correlation coefficients (Spearman's rho) are below the diagonal and p-values are above the diagonal.")
+
+```

@@ -1,0 +1,265 @@
+---
+title: "Cx43 puncta vs protein expression"
+output:
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: console
+date: "`r format(Sys.time())`"
+---
+
+
+# Overview
+Here we will perform pairwise comparisons of all variables in dataset comprising:
+
+* ordinal variables from the donor metadata (Age, PD.duration, LB.Braak.stage, SN.depigmentation, Amyloid.pathology, Tau.pathology, Vessel.disease...CAA)
+* protein expression from the Western Blot experiments
+* Cx43 puncta counts from the confocal images
+
+Correlation matrices will be generated for:
+
+* all donors (PD and control)
+* PD only
+* control only
+
+# Load libraries
+```{r}
+library(stringr)
+library(corrplot)
+library(Hmisc)
+```
+
+# Load data
+```{r}
+donors <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/donor_metadata.csv", row.names=1, na.strings="NA")
+
+puncta <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/Cx43 puncta per cell - Sheet1.csv", header=T, na.string="NA")
+puncta <- puncta[c(18:29, 10:17, 1:9, 30:40),]
+row.names(puncta) <- puncta$Donor.ID
+puncta$Donor.ID <- NULL
+
+wb <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/WB_protein_levels.csv", row.names=1)
+wb <- wb[c(21:40,1:20),]
+
+group <- c(rep("P", 20),rep("C", 20))
+```
+
+
+# All donors
+We will ignore the variables PD.duration and SN.depigmentation, because these are not available for controls.
+```{r}
+dataAll <- cbind(donors$Age, donors$LB.Braak.stage, donors$Amyloid.pathology, donors$Tau.pathology, donors$Vessel.disease...CAA,puncta,wb)
+
+names(dataAll) <- c(
+  "Age",
+  "LB.Braak.stage",
+  "Amyloid.pathology",
+  "Tau.pathology",
+  "Vessel.disease...CAA",
+  "Puncta.Frontal.cortex",
+  "Puncta.Parietal.cortex",
+  "Puncta.Insular.cortex",
+  "Puncta.BG.Putamen",
+  "Puncta.BG.Globus.P",              
+  "Puncta.BG.Caudate",
+  "Puncta.Midbrain.SN",
+  "WB.ParCort.Cx43",
+  "WB.ParCort.GFAP",              
+  "WB.ParCort.ALdh1L1",
+  "WB.ParCort.GDNF",
+  "WB.StriBG.Cx43",
+  "WB.StriBG.GFAP",
+  "WB.StriBG.ALdh1L1",
+  "WB.StriBG.GDNF",
+  "WB.MidSN.Cx43",
+  "WB.MidSN.GFAP",               
+  "WB.MidSN.ALdh1L1",
+  "WB.MidSN.GDNF"                 
+)
+```
+
+Remove columns (variables) we don't want to analyse:
+```{r}
+dataAll$Age <- NULL
+dataAll$LB.Braak.stage <- NULL
+dataAll$Amyloid.pathology <- NULL
+dataAll$Tau.pathology <- NULL
+dataAll$Vessel.disease...CAA <- NULL
+dataAll$WB.ParCort.GFAP <- NULL
+dataAll$WB.ParCort.ALdh1L1 <- NULL
+dataAll$WB.ParCort.GDNF <- NULL
+dataAll$WB.StriBG.ALdh1L1 <- NULL
+dataAll$WB.StriBG.GDNF <- NULL
+dataAll$WB.StriBG.GFAP <- NULL
+dataAll$WB.MidSN.ALdh1L1 <- NULL
+dataAll$WB.MidSN.GDNF <- NULL
+dataAll$WB.MidSN.GFAP <- NULL
+```
+
+We’ll use Spearman’s rho statistic which measures the strength and direction of any monotonic association between two variables. N.B. relationship does not need to be linear.
+```{r}
+#corMatAll <- rcorr(dataAll, use="pairwise.complete.obs", method="spearman")
+corMatAll <- rcorr(as.matrix(dataAll), type="spearman")
+corrplot(corMatAll$r, method="circle")
+corMatAllTable <- round(corMatAll$r, 3)
+corMatAllTable[upper.tri(corMatAllTable, diag=TRUE)] <- ""
+corMatAllP <- round(corMatAll$P, 3)
+corMatAllP <- ifelse(corMatAllP==0, "<0.001", corMatAllP)
+corMatAllTable[upper.tri(corMatAllTable)] <- corMatAllP[upper.tri(corMatAllP)]
+knitr::kable(corMatAllTable, caption="Correlation coefficients (Spearman's rho) are below the diagonal and p-values are above the diagonal.")
+fdrP <- round(p.adjust(corMatAll$P[upper.tri(corMatAll$P)], method="BH"),3)
+fdrP <- ifelse(fdrP==0, "<0.001", fdrP)
+n_fdr <- corMatAll$n
+n_fdr[upper.tri(n_fdr, diag=TRUE)] <- ""
+n_fdr[upper.tri(n_fdr)] <- fdrP
+knitr::kable(n_fdr, caption="The number of observations used in analyzing each pair of variables is displayed below the diagonal and the FDR adjusted p-value above.")
+```
+
+# Donors with Parkison's Disease
+```{r}
+dataPD <- cbind(donors$Age, donors$PD.duration, donors$LB.Braak.stage, donors$SN.depigmentation, donors$Amyloid.pathology, donors$Tau.pathology, donors$Vessel.disease...CAA,puncta,wb)[group=="P",]
+
+names(dataPD) <- c(
+  "Age",
+  "PD.duration",
+  "LB.Braak.stage",
+  "SN.depigmentation",
+  "Amyloid.pathology",
+  "Tau.pathology",
+  "Vessel.disease...CAA",
+  "Puncta.Frontal.cortex",
+  "Puncta.Parietal.cortex",
+  "Puncta.Insular.cortex",
+  "Puncta.BG.Putamen",
+  "Puncta.BG.Globus.P",              
+  "Puncta.BG.Caudate",
+  "Puncta.Midbrain.SN",
+  "WB.ParCort.Cx43",
+  "WB.ParCort.GFAP",              
+  "WB.ParCort.ALdh1L1",
+  "WB.ParCort.GDNF",
+  "WB.StriBG.Cx43",
+  "WB.StriBG.GFAP",
+  "WB.StriBG.ALdh1L1",
+  "WB.StriBG.GDNF",
+  "WB.MidSN.Cx43",
+  "WB.MidSN.GFAP",               
+  "WB.MidSN.ALdh1L1",
+  "WB.MidSN.GDNF"                 
+)
+```
+
+Remove columns (variables) we don't want to analyse:
+```{r}
+dataPD$Age <- NULL
+dataPD$LB.Braak.stage <- NULL
+dataPD$Amyloid.pathology <- NULL
+dataPD$Tau.pathology <- NULL
+dataPD$Vessel.disease...CAA <- NULL
+dataPD$SN.depigmentation <- NULL
+dataPD$PD.duration <- NULL
+dataPD$WB.ParCort.GFAP <- NULL
+dataPD$WB.ParCort.ALdh1L1 <- NULL
+dataPD$WB.ParCort.GDNF <- NULL
+dataPD$WB.StriBG.ALdh1L1 <- NULL
+dataPD$WB.StriBG.GDNF <- NULL
+dataPD$WB.StriBG.GFAP <- NULL
+dataPD$WB.MidSN.ALdh1L1 <- NULL
+dataPD$WB.MidSN.GDNF <- NULL
+dataPD$WB.MidSN.GFAP <- NULL
+```
+
+We’ll use Spearman’s rho statistic which measures the strength and direction of any monotonic association between two variables. N.B. relationship does not need to be linear.
+```{r}
+#corMatPD <- cor(dataPD, use="pairwise.complete.obs", method="spearman")
+corMatPD <- rcorr(as.matrix(dataPD), type="spearman")
+corrplot(corMatPD$r, method="circle")
+corMatPDTable <- round(corMatPD$r, 3)
+corMatPDTable[upper.tri(corMatPDTable, diag=TRUE)] <- ""
+corMatPDP <- round(corMatPD$P, 3)
+corMatPDP <- ifelse(corMatPDP==0, "<0.001", corMatPDP)
+corMatPDTable[upper.tri(corMatPDTable)] <- corMatPDP[upper.tri(corMatPDP)]
+knitr::kable(corMatPDTable, caption="Correlation coefficients (Spearman's rho) are below the diagonal and p-values are above the diagonal.")
+fdrP <- round(p.adjust(corMatPD$P[upper.tri(corMatPD$P)], method="BH"),3)
+fdrP <- ifelse(fdrP==0, "<0.001", fdrP)
+n_fdr <- corMatPD$n
+n_fdr[upper.tri(n_fdr, diag=TRUE)] <- ""
+n_fdr[upper.tri(n_fdr)] <- fdrP
+knitr::kable(n_fdr, caption="The number of observations used in analyzing each pair of variables is displayed below the diagonal and the FDR adjusted p-value above.")
+```
+
+# Control group
+We will ignore the variables PD.duration and SN.depigmentation, because these are not available for controls. We'll also ignore LB.Braak.stage, because this is zero or NA for all control donors
+```{r}
+dataControl <- cbind(donors$Age, donors$Amyloid.pathology, donors$Tau.pathology, donors$Vessel.disease...CAA,puncta,wb)[group=="C",]
+
+names(dataControl) <- c(
+  "Age",
+  "Amyloid.pathology",
+  "Tau.pathology",
+  "Vessel.disease...CAA",
+  "Puncta.Frontal.cortex",
+  "Puncta.Parietal.cortex",
+  "Puncta.Insular.cortex",
+  "Puncta.BG.Putamen",
+  "Puncta.BG.Globus.P",              
+  "Puncta.BG.Caudate",
+  "Puncta.Midbrain.SN",
+  "WB.ParCort.Cx43",
+  "WB.ParCort.GFAP",              
+  "WB.ParCort.ALdh1L1",
+  "WB.ParCort.GDNF",
+  "WB.StriBG.Cx43",
+  "WB.StriBG.GFAP",
+  "WB.StriBG.ALdh1L1",
+  "WB.StriBG.GDNF",
+  "WB.MidSN.Cx43",
+  "WB.MidSN.GFAP",               
+  "WB.MidSN.ALdh1L1",
+  "WB.MidSN.GDNF"                 
+)
+```
+
+Remove columns (variables) we don't want to analyse:
+```{r}
+dataControl$Age <- NULL
+dataControl$Amyloid.pathology <- NULL
+dataControl$Tau.pathology <- NULL
+dataControl$Vessel.disease...CAA <- NULL
+dataControl$WB.ParCort.GFAP <- NULL
+dataControl$WB.ParCort.ALdh1L1 <- NULL
+dataControl$WB.ParCort.GDNF <- NULL
+dataControl$WB.StriBG.ALdh1L1 <- NULL
+dataControl$WB.StriBG.GDNF <- NULL
+dataControl$WB.StriBG.GFAP <- NULL
+dataControl$WB.MidSN.ALdh1L1 <- NULL
+dataControl$WB.MidSN.GDNF <- NULL
+dataControl$WB.MidSN.GFAP <- NULL
+```
+
+We’ll use Spearman’s rho statistic which measures the strength and direction of any monotonic association between two variables. N.B. relationship does not need to be linear.
+```{r}
+#corMatControl <- cor(dataControl, use="pairwise.complete.obs", method="spearman")
+corMatControl <- rcorr(as.matrix(dataControl), type="spearman")
+corrplot(corMatControl$r, method="circle")
+corMatControlTable <- round(corMatControl$r, 3)
+corMatControlTable[upper.tri(corMatControlTable, diag=TRUE)] <- ""
+corMatControlP <- round(corMatControl$P, 3)
+corMatControlP <- ifelse(corMatControlP==0, "<0.001", corMatControlP)
+corMatControlTable[upper.tri(corMatControlTable)] <- corMatControlP[upper.tri(corMatControlP)]
+knitr::kable(corMatControlTable, caption="Correlation coefficients (Spearman's rho) are below the diagonal and p-values are above the diagonal.")
+fdrP <- round(p.adjust(corMatControl$P[upper.tri(corMatControl$P)], method="BH"),3)
+fdrP <- ifelse(fdrP==0, "<0.001", fdrP)
+n_fdr <- corMatControl$n
+n_fdr[upper.tri(n_fdr, diag=TRUE)] <- ""
+n_fdr[upper.tri(n_fdr)] <- fdrP
+knitr::kable(n_fdr, caption="The number of observations used in analyzing each pair of variables is displayed below the diagonal and the FDR adjusted p-value above.")
+```
+
+# References
+```{r}
+citation()
+citation("stringr")
+citation("corrplot")
+citation("Hmisc")
+```
