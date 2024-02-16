@@ -51,7 +51,7 @@ getBoxCoxLambda <- function(varName, dfName) {
 # Load data
 
 ```{r}
-wb <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/WB_protein_levels.csv", row.names=1)
+wb <- read.csv("../data/WB_protein_levels.csv", row.names=1)
 
 grp <- c(rep("C", 20),rep("P", 20))
 ```
@@ -126,5 +126,5 @@ knitr::kable(swTable)
 
 # Write transformed data to file
 ```{r}
-write.csv(wbT, "~/Cam_Dropbox/Nat_Hastings/PD_data/WB_protein_levels_BoxCox_transformed.csv", row.names=T, quote=F)
+write.csv(wbT, "../data/WB_protein_levels_BoxCox_transformed.csv", row.names=T, quote=F)
 ```

@@ -26,7 +26,7 @@ swPval <- function(x) {
 # Load data
 Read csv file:
 ```{r}
-donors <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/donor_metadata.csv", row.names=1, na.strings="NA")
+donors <- read.csv("../data/donor_metadata.csv", row.names=1, na.strings="NA")
 ```
 Create variable to represent group:
 ```{r}

@@ -18,7 +18,7 @@ library(Hmisc)
 
 # Load data
 ```{r}
-dat <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/Cx43_vs_aggregates_parietal_cortex.csv", header=T, na.string="N/A")
+dat <- read.csv("../data/Cx43_vs_aggregates_parietal_cortex.csv", header=T, na.string="N/A")
 row.names(dat) <- dat$Donor
 dat$Donor <- NULL
 dat$Cx43.prot.par..cort <- NULL

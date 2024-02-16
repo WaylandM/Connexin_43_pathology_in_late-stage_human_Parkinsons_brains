@@ -70,9 +70,9 @@ processVariable <- function(varName, diag=TRUE){
 # Load data
 Raw western blot data have been transformed using Box-Cox method (see WB_Box_Cox_transformation.html)
 ```{r}
-donors <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/donor_metadata.csv", row.names=1, na.strings="NA")
+donors <- read.csv("../data/donor_metadata.csv", row.names=1, na.strings="NA")
 
-wb <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/WB_protein_levels_BoxCox_transformed.csv", row.names=1)
+wb <- read.csv("../data/WB_protein_levels_BoxCox_transformed.csv", row.names=1)
 wb <- wb[c(21:40,1:20),]
 wbRaw <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/WB_protein_levels.csv", row.names=1)
 wbRaw <- wbRaw[c(21:40,1:20),]

@@ -36,7 +36,7 @@ swPval <- function(x) {
 # Load data
 
 ```{r}
-wb <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/WB_protein_levels.csv", row.names=1)
+wb <- read.csv("../data/WB_protein_levels.csv", row.names=1)
 
 grp <- c(rep("C", 20),rep("P", 20))
 ```
