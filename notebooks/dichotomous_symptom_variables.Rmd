@@ -1,0 +1,467 @@
+---
+title: "Dichotomous symptom variables"
+output:
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: console
+date: "`r format(Sys.time())`"
+---
+
+# Load libraries
+```{r}
+library(stringr)
+library(effectsize)
+library(kableExtra)
+```
+
+# Define functions
+```{r}
+smartT <- function(d,i, dRaw, depVarDF, depVarRawDF, donorsDF) {
+  dep <- eval(parse(text=str_c(d)))
+  ind <- eval(parse(text=str_c(i)))
+  depRaw <- eval(parse(text=str_c(dRaw)))
+  categories <- sort(unique(ind))
+  cat1N <- sum(!is.na(dep[ind==categories[1]]))
+  cat2N <- sum(!is.na(dep[ind==categories[2]]))
+  catN <- str_c(cat1N, "/", cat2N)
+  categoryNames <- str_c(categories[1],"/",categories[2])
+  
+  if((cat1N>1) & (cat2N>1)) {
+    varEqual <- var.test(dep~ind)$p.value>=0.05
+    pval <- t.test(dep~ind, var.equal=varEqual)$p.value
+    cohensDstat <- cohens_d(dep~ind, pooled_sd=varEqual)
+    cohensD <- cohensDstat$Cohens_d
+    cohensDlowCI <- cohensDstat$CI_low
+    cohensDhighCI <- cohensDstat$CI_high
+    effectSize <- interpret_cohens_d(cohensD)
+  } else {
+    varEqual<-NA
+    pval<-NA
+    cohensD<-NA
+    cohensDlowCI <- NA
+    cohensDhighCI <- NA
+    effectSize<-NA
+  }
+  
+  mean1 <- mean(depRaw[ind==categories[1]], na.rm=T)
+  sd1 <- sd(depRaw[ind==categories[1]], na.rm=T)
+  mean2 <- mean(depRaw[ind==categories[2]], na.rm=T)
+  sd2 <- sd(depRaw[ind==categories[2]], na.rm=T)
+  
+  return(list("categories"=categoryNames,"catN"=catN, "varEqual"=varEqual, "pval"=pval, "cohensD"=cohensD, "cohensDlowCI"=cohensDlowCI, "cohensDhighCI"=cohensDhighCI, "effectSize"=effectSize, "mean1"=mean1, "sd1"=sd1, "mean2"=mean2, "sd2"=sd2))
+}
+```
+
+The **smartT** (smart t-test) function does the following:
+
+* determines the two categories in the independent variable
+* counts the number of observations in each category
+* checks that their are sufficient observations for statistical comparison (n>1 in both categories)
+* checks to see if the variances of two categories are equal
+* if variances are equal, it performs a pooled variance t-test, otherwise it performs a Welch t-test
+* computes the effect size (Cohen's D)
+* makes a qualitative interpretation of effect size
+
+
+```{r}
+processData <- function(varNames, depVarDF, depVarRawDF, donorsDF) {
+  indVar <- unlist(lapply(varNames, rep, length(depVarDF)))
+  depVar <- rep(names(depVarDF), length(varNames))
+  categories <- NA
+  catN <- NA
+  varEqual <- NA
+  rawP <- NA
+  adjP <- NA
+  cohensD <- NA
+  cohensDlowCI <- NA
+  cohensDhighCI <- NA
+  effectSize <- NA
+  mean1 <- NA
+  sd1 <- NA
+  mean2 <- NA
+  sd2 <- NA
+  res <- data.frame(cbind(indVar, depVar, categories, catN, varEqual, rawP, adjP, cohensD, cohensDlowCI, cohensDhighCI, effectSize, mean1, sd1, mean2, sd2))
+
+  indVarT <- str_c("donorsDF$", indVar)
+  depVarT <- str_c("depVarDF$", depVar)
+  depRawVarT <- str_c("depVarRawDF$", depVar)
+
+  for (i in 1:dim(res)[1]){
+    st <- suppressWarnings(smartT(depVarT[i], indVarT[i], depRawVarT[i], depVarDF=depVarDF, depVarRawDF = depVarRawDF, donorsDF = donorsDF))
+    res$categories[i] <- st$categories
+    res$catN[i] <- st$catN
+    res$varEqual[i] <- st$varEqual
+    res$rawP[i] <- st$pval
+    res$cohensD[i] <- st$cohensD
+    res$cohensDlowCI[i] <- st$cohensDlowCI
+    res$cohensDhighCI[i] <- st$cohensDhighCI
+    res$effectSize[i] <- st$effectSize
+    res$mean1[i] <- st$mean1
+    res$sd1[i] <- st$sd1
+    res$mean2[i] <- st$mean2
+    res$sd2[i] <- st$sd2
+  }
+
+  res$rawP <- round(as.numeric(res$rawP),4)
+  res$adjP <- round(p.adjust(res$rawP, method="BH"),4)
+  res$cohensD <- round(as.numeric(res$cohensD),4)
+  res$cohensDlowCI <- round(as.numeric(res$cohensDlowCI),4)
+  res$cohensDhighCI <- round(as.numeric(res$cohensDhighCI),4)
+  res$mean1 <- round(as.numeric(res$mean1),4)
+  res$sd1 <- round(as.numeric(res$sd1),4)
+  res$mean2 <- round(as.numeric(res$mean2),4)
+  res$sd2 <- round(as.numeric(res$sd2),4)
+
+  names(res) <- c("Independent variable", "Dependent variable", "Categories", "Category n", "Equal variances", "Raw p-value", "Adj. p-value (FDR)", "Cohens D", "Cohens D CI low", "Cohens D CI high", "Effect size", "Mean cat 1", "SD cat 1", "Mean cat 2", "SD cat 2")
+  
+  return(res)
+}
+```
+The **processData** function is a wrapper for the **smartT** function to automate analysis of all variables. It takes four arguments:
+
+* *varNames* - a vector of names of the independent variables
+* *depVarDF* - a data.frame of dependent variables (Box-Cox transformed)
+* *depVarRawDF* - a data.frame of dependent variables (raw)
+* *donorsDF* - a data.frame of donor metadata (including dichotomous symptom variables)
+
+**Interpretation of Cohen's D (Cohen, 1988):**
+
+* d < 0.2 - Very small
+* 0.2 <= d < 0.5 - Small
+* 0.5 <= d < 0.8 - Medium
+* d >= 0.8 - Large
+
+*N.B. Rules apply equally to positive and negative d (i.e., they are given as absolute values).*
+
+# List of dichotomous symptom variables
+Dichotomous variables are nominal variables with only two categories.
+
+* Dementia / cognitive impairment
+* Depression
+* Sleep disturbance
+* Aggression
+* Hallucinations
+* Psychotic symptoms
+
+
+LB.disease.type has three categories: limbic, neocortical and brainstem. However, we have just one observation for brainstem. If we remove the brainstem observation, we can treat LB.disease.type as a dichotomous variable.
+
+# Load data
+***N.B. Raw western blot and puncta data have been transformed using Box-Cox method.***
+```{r}
+donors <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/donor_metadata.csv", row.names=1, na.strings="NA")
+
+puncta <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/Cx43_puncta_per_cell_BoxCox_transformed.csv", row.names=1)
+punctaRaw <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/Cx43 puncta per cell - Sheet1.csv", row.names=1)
+punctaRaw <- punctaRaw[c(18:29, 10:17, 1:9, 30:40),]
+
+group <- c(rep("P", 20),rep("C", 20))
+
+wb <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/WB_protein_levels_BoxCox_transformed.csv", row.names=1)
+wb <- wb[c(21:40,1:20),]
+
+wbRaw <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/WB_protein_levels.csv", row.names=1)
+wbRaw <- wbRaw[c(21:40,1:20),]
+
+```
+
+Remove single "brainstem" observation from LB.disease.type, so that we can treat it as a dichotomous variable.
+```{r}
+donors$LB.disease.type <- ifelse(donors$LB.disease.type=="brainstem", NA, donors$LB.disease.type)
+```
+
+# All data
+## Donor symptom summary
+### Dementia/cognitive impairment
+```{r}
+tbl <- as.data.frame(table(donors$Dementia...cognitive.impairment))
+names(tbl) <- c("Dementia", "Frequency")
+knitr::kable(tbl, format = "html", table.attr = "style='width:20%;'")
+```
+
+### Depression
+```{r}
+tbl <- as.data.frame(table(donors$Depression))
+names(tbl) <- c("Depression", "Frequency")
+knitr::kable(tbl, format = "html", table.attr = "style='width:20%;'")
+```
+
+### Memory problems
+```{r}
+tbl <- as.data.frame(table(donors$Memory.problems))
+names(tbl) <- c("Memory problems", "Frequency")
+knitr::kable(tbl, format = "html", table.attr = "style='width:25%;'")
+```
+
+### Sleep disturbance
+```{r}
+tbl <- as.data.frame(table(donors$Sleep.disturbance))
+names(tbl) <- c("Sleep disturbance", "Frequency")
+knitr::kable(tbl, format="html", table.attr = "style='width:25%;'")
+```
+
+### Aggression
+```{r}
+tbl <- as.data.frame(table(donors$Aggression))
+names(tbl) <- c("Aggression", "Frequency")
+knitr::kable(tbl, format="html", table.attr="style='width:20%;'")
+```
+
+### Hallucinations
+```{r}
+tbl <- as.data.frame(table(donors$Hallucinations))
+names(tbl) <- c("Hallucinations", "Frequency")
+knitr::kable(tbl, format="html", table.attr="style='width:20%;'")
+```
+
+### Psychotic symptoms
+```{r}
+tbl <- as.data.frame(table(donors$Psychotic.symptoms))
+names(tbl) <- c("Psychotic symptoms", "Frequency")
+knitr::kable(tbl, format="html", table.attr="style='width:25%;'")
+```
+
+<!-- ### Gender -->
+<!-- ```{r} -->
+<!-- tbl <- as.data.frame(table(donors$Gender)) -->
+<!-- names(tbl) <- c("Gender", "Frequency") -->
+<!-- knitr::kable(tbl, format="html", table.attr="style='width:20%;'") -->
+<!-- ``` -->
+
+### Symptom variables for analysis
+```{r}
+varNames <- c("Dementia...cognitive.impairment", 
+              "Depression",
+              "Memory.problems",
+              "Sleep.disturbance",
+              "Aggression",
+              "Hallucinations",
+              "Psychotic.symptoms")
+```
+
+## Protein expression (western blot)
+```{r}
+res <- processData(varNames = varNames,
+                   depVarDF = wb,
+                   depVarRawDF = wbRaw,
+                   donorsDF = donors)
+kable(res, "html") %>% 
+  kable_styling() %>%
+  scroll_box(width="100%", height="500px")
+```
+
+
+## Cx43_puncta_per_cell
+```{r}
+res <- processData(varNames = varNames,
+                   depVarDF = puncta,
+                   depVarRawDF = punctaRaw,
+                   donorsDF = donors)
+kable(res, "html") %>% 
+  kable_styling() %>%
+  scroll_box(width="100%", height="500px")
+```
+
+# Parkinson's disease
+
+## Donor symptom summary
+
+### LB disease type
+```{r}
+tbl <- as.data.frame(table(donors$LB.disease.type[group=="P"]))
+names(tbl) <- c("LB disease type", "Frequency")
+knitr::kable(tbl, format="html", table.attr="style='width:25%;'")
+```
+
+### Dementia/cognitive impairment
+```{r}
+tbl <- as.data.frame(table(donors$Dementia...cognitive.impairment[group=="P"]))
+names(tbl) <- c("Dementia", "Frequency")
+knitr::kable(tbl, format = "html", table.attr = "style='width:20%;'")
+```
+
+### Depression
+```{r}
+tbl <- as.data.frame(table(donors$Depression[group=="P"]))
+names(tbl) <- c("Depression", "Frequency")
+knitr::kable(tbl, format = "html", table.attr = "style='width:20%;'")
+```
+
+### Memory problems
+```{r}
+tbl <- as.data.frame(table(donors$Memory.problems[group=="P"]))
+names(tbl) <- c("Memory problems", "Frequency")
+knitr::kable(tbl, format = "html", table.attr = "style='width:25%;'")
+```
+
+### Sleep disturbance
+```{r}
+tbl <- as.data.frame(table(donors$Sleep.disturbance[group=="P"]))
+names(tbl) <- c("Sleep disturbance", "Frequency")
+knitr::kable(tbl, format="html", table.attr = "style='width:25%;'")
+```
+
+### Aggression
+```{r}
+tbl <- as.data.frame(table(donors$Aggression[group=="P"]))
+names(tbl) <- c("Aggression", "Frequency")
+knitr::kable(tbl, format="html", table.attr="style='width:20%;'")
+```
+
+### Hallucinations
+```{r}
+tbl <- as.data.frame(table(donors$Hallucinations[group=="P"]))
+names(tbl) <- c("Hallucinations", "Frequency")
+knitr::kable(tbl, format="html", table.attr="style='width:20%;'")
+```
+
+### Psychotic symptoms
+```{r}
+tbl <- as.data.frame(table(donors$Psychotic.symptoms[group=="P"]))
+names(tbl) <- c("Psychotic symptoms", "Frequency")
+knitr::kable(tbl, format="html", table.attr="style='width:25%;'")
+```
+
+<!-- ### Gender -->
+<!-- ```{r} -->
+<!-- tbl <- as.data.frame(table(donors$Gender[group=="P"])) -->
+<!-- names(tbl) <- c("Gender", "Frequency") -->
+<!-- knitr::kable(tbl, format="html", table.attr="style='width:20%;'") -->
+<!-- ``` -->
+
+### Symptom variables for analysis
+```{r}
+varNamesP <- c("LB.disease.type",
+              "Dementia...cognitive.impairment", 
+              "Depression",
+              "Memory.problems",
+              "Sleep.disturbance",
+              "Aggression",
+              "Hallucinations",
+              "Psychotic.symptoms")
+
+donorsP <- donors[group=="P",]
+```
+
+## Protein expression (western blot)
+```{r}
+res <- processData(varNames = varNamesP,
+                   depVarDF = wb[group=="P",],
+                   depVarRawDF = wbRaw[group=="P",],
+                   donorsDF = donorsP)
+kable(res, "html") %>% 
+  kable_styling() %>%
+  scroll_box(width="100%", height="500px")
+```
+
+## Cx43_puncta_per_cell
+```{r}
+res <- processData(varNames = varNamesP,
+                   depVarDF = puncta[group=="P",],
+                   depVarRawDF = punctaRaw[group=="P",],
+                   donorsDF = donorsP)
+kable(res, "html") %>% 
+  kable_styling() %>%
+  scroll_box(width="100%", height="500px")
+```
+
+
+# Control
+
+## Donor symptom summary
+
+### Dementia/cognitive impairment
+```{r}
+tbl <- as.data.frame(table(donors$Dementia...cognitive.impairment[group=="C"]))
+names(tbl) <- c("Dementia", "Frequency")
+knitr::kable(tbl, format = "html", table.attr = "style='width:20%;'")
+```
+
+### Depression
+```{r}
+tbl <- as.data.frame(table(donors$Depression[group=="C"]))
+names(tbl) <- c("Depression", "Frequency")
+knitr::kable(tbl, format = "html", table.attr = "style='width:20%;'")
+```
+
+### Memory problems
+```{r}
+tbl <- as.data.frame(table(donors$Memory.problems[group=="C"]))
+names(tbl) <- c("Memory problems", "Frequency")
+knitr::kable(tbl, format = "html", table.attr = "style='width:25%;'")
+```
+
+### Sleep disturbance
+```{r}
+tbl <- as.data.frame(table(donors$Sleep.disturbance[group=="C"]))
+names(tbl) <- c("Sleep disturbance", "Frequency")
+knitr::kable(tbl, format="html", table.attr = "style='width:25%;'")
+```
+
+### Aggression
+```{r}
+tbl <- as.data.frame(table(donors$Aggression[group=="C"]))
+names(tbl) <- c("Aggression", "Frequency")
+knitr::kable(tbl, format="html", table.attr="style='width:20%;'")
+```
+
+### Hallucinations
+```{r}
+tbl <- as.data.frame(table(donors$Hallucinations[group=="C"]))
+names(tbl) <- c("Hallucinations", "Frequency")
+knitr::kable(tbl, format="html", table.attr="style='width:20%;'")
+```
+
+### Psychotic symptoms
+```{r}
+tbl <- as.data.frame(table(donors$Psychotic.symptoms[group=="C"]))
+names(tbl) <- c("Psychotic symptoms", "Frequency")
+knitr::kable(tbl, format="html", table.attr="style='width:25%;'")
+```
+
+<!-- ### Gender -->
+<!-- ```{r} -->
+<!-- tbl <- as.data.frame(table(donors$Gender[group=="C"])) -->
+<!-- names(tbl) <- c("Gender", "Frequency") -->
+<!-- knitr::kable(tbl, format="html", table.attr="style='width:20%;'") -->
+<!-- ``` -->
+
+### Symptom variables for analysis
+```{r}
+varNamesC <- c("Depression", "Memory.problems")
+
+donorsC <- donors[group=="C",]
+```
+
+## Protein expression (western blot)
+```{r}
+res <- processData(varNames = varNamesC,
+                   depVarDF = wb[group=="C",],
+                   depVarRawDF = wbRaw[group=="C",],
+                   donorsDF = donorsC)
+kable(res, "html") %>% 
+  kable_styling() %>%
+  scroll_box(width="100%", height="500px")
+```
+
+## Cx43_puncta_per_cell
+```{r}
+res <- processData(varNames = varNamesC,
+                   depVarDF = puncta[group=="C",],
+                   depVarRawDF = punctaRaw[group=="C",],
+                   donorsDF = donorsC)
+kable(res, "html") %>% 
+  kable_styling() %>%
+  scroll_box(width="100%", height="500px")
+```
+
+
+# References
+Cohen, J. (1988). Statistical power analysis for the behavioral sciences (2nd Ed.). New York: Routledge.
+```{r}
+citation()
+citation("stringr")
+citation("effectsize")
+citation("kableExtra")
+```

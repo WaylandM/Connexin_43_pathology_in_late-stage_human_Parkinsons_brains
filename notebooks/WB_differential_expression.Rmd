@@ -1,0 +1,466 @@
+---
+title: "Western Blot Data: Differential Expression Analysis"
+output:
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: console
+date: "`r format(Sys.time())`"
+---
+
+# Load libraries
+```{r}
+library(stringr)
+library(MASS)
+library(car)
+library(AICcmodavg)
+library(effectsize)
+```
+
+# Define functions
+```{r}
+findBestModel <- function(varName){
+  eval(parse(text=str_c("stepAIC(lm(",varName,"~ grp + batch + Age + Gender, data=dat))")))
+}
+
+fitLM <- function(varName){
+  eval(parse(text=str_c("lm(",varName,"~ grp + batch + Age + Gender, data=dat)")))
+}
+
+fitCandidateModels <- function(varName){
+  candidateModels <- list()
+  candidateModels[[1]] <- eval(parse(text=str_c("lm(",varName,"~ group, data=dat)")))
+  candidateModels[[2]] <- eval(parse(text=str_c("lm(",varName,"~ group + batch, data=dat)")))
+  candidateModels[[3]] <- eval(parse(text=str_c("lm(",varName,"~ group + Age, data=dat)")))
+  candidateModels[[4]] <- eval(parse(text=str_c("lm(",varName,"~ group + Gender, data=dat)")))
+  candidateModels[[5]] <- eval(parse(text=str_c("lm(",varName,"~ group + batch + Age, data=dat)")))
+  candidateModels[[6]] <- eval(parse(text=str_c("lm(",varName,"~ group + batch + Gender, data=dat)")))
+  candidateModels[[7]] <- eval(parse(text=str_c("lm(",varName,"~ group + Age + Gender, data=dat)")))
+  candidateModels[[8]] <- eval(parse(text=str_c("lm(",varName,"~ group + batch + Age + Gender, data=dat)")))
+  return(candidateModels)
+}
+
+modelNames <- c("group",
+"group+batch",
+"group+Age",
+"group+Gender",
+"group+batch+Age",
+"group+batch+Gender",
+"group+Age+Gender",
+"group+batch+Age+Gender")
+
+
+processVariable <- function(varName, diag=TRUE){
+  cat("\n\n## ", varName,"\n")
+  cat("\n\n### Performance of candidate models\n")
+  candidateModels <- fitCandidateModels(varName)
+  resTab <- aictab(cand.set = candidateModels, modnames = modelNames)
+  print(knitr::kable(resTab))
+  
+  idxBestModel <- as.numeric(row.names(resTab)[1])
+  if(diag){
+    cat("\n\n### Diagnostics for best model")
+    plot(candidateModels[[idxBestModel]])
+  }
+  (shapiroResid <- shapiro.test(candidateModels[[idxBestModel]]$residuals))
+  return(list(indexBest=idxBestModel, bestModel=candidateModels[[idxBestModel]], shapiroResidP=shapiroResid$p.value))
+}
+```
+
+# Load data
+Raw western blot data have been transformed using Box-Cox method (see WB_Box_Cox_transformation.html)
+```{r}
+donors <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/donor_metadata.csv", row.names=1, na.strings="NA")
+
+wb <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/WB_protein_levels_BoxCox_transformed.csv", row.names=1)
+wb <- wb[c(21:40,1:20),]
+wbRaw <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/WB_protein_levels.csv", row.names=1)
+wbRaw <- wbRaw[c(21:40,1:20),]
+
+group <- c(rep("P", 20),rep("C", 20))
+groupColor <- c(rep("red", 20),rep("blue", 20))
+batch <- c(rep("1", 6), rep("2",6), rep("3",6), rep("4",2))
+batch <- rep(batch,2)
+```
+
+Create data.frame:
+```{r}
+dat <- data.frame(cbind(group,
+                        batch,
+                        donors,
+                        wb$ParCort.Cx43,
+                        wb$ParCort.GFAP,
+                        wb$ParCort.ALdh1L1,
+                        wb$ParCort.GDNF,
+                        wb$StriBG.Cx43,
+                        wb$StriBG.GFAP,
+                        wb$StriBG.ALdh1L1,
+                        wb$StriBG.GDNF,
+                        wb$MidSN.Cx43,
+                        wb$MidSN.GFAP,
+                        wb$MidSN.ALdh1L1,
+                        wb$MidSN.GDNF))
+
+varNames <- names(dat)[21:32] <- c("ParCort.Cx43",
+                "ParCort.GFAP",
+                "ParCort.ALdh1L1",
+                "ParCort.GDNF",
+                "StriBG.Cx43",
+                "StriBG.GFAP",
+                "StriBG.ALdh1L1",
+                "StriBG.GDNF",
+                "MidSN.Cx43",
+                "MidSN.GFAP",
+                "MidSN.ALdh1L1",
+                "MidSN.GDNF")
+```
+
+# Find best model for each variable
+```{r, results="asis"}
+bestModels <- lapply(varNames, processVariable, diag=F)
+
+bmDF <- data.frame(cbind(Variable=varNames, Best.Model=rep(NA,length(bestModels)), ShapiroResidP=rep(NA,length(bestModels))))
+for (i in 1:length(bestModels)){
+  bmDF$Best.Model[i]<- modelNames[bestModels[[i]]$indexBest]
+  bmDF$ShapiroResidP[i] <- bestModels[[i]]$shapiroResidP
+}
+
+bmDF$ShapiroResidP <- round(as.numeric(bmDF$ShapiroResidP),3)
+#bmDF$ShapiroResidP <- ifelse(bmDF$ShapiroResidP==0, "<0.001", bmDF$ShapiroResidP)
+
+names(bmDF) <- c("Variable", "Best Model", "Shapiro-Wilk Test on Model Residuals (p-value)")
+  
+cat("\n")
+print(knitr::kable(bmDF))
+```
+
+***N.B. Model residuals should follow a normal distribution. Here we see that the residuals of the models for ParCort.ALdh1L1 and StriBG.ALdh1L1 do not. However, as we'll see in the next section, we are not claiming that either of these variables differ in expression between Parkinson's Disease patients and controls. Moreover, non-parametric tests didn't show differential expression of either variable, so I don't think we're failing to detect a real difference between the two groups.***
+
+<!-- # ANOVA -->
+
+<!-- ```{r} -->
+<!-- anovaRawP <- rep(NA, length(bestModels)) -->
+<!-- epsilonSquared <- rep(NA, length(bestModels)) -->
+<!-- for (i in 1:length(bestModels)){ -->
+<!--   anovaTab <- Anova(bestModels[[i]]$bestModel, type="II") -->
+<!--   anovaRawP[i] <- anovaTab$`Pr(>F)`[row.names(anovaTab)=="group"] -->
+<!--   epsilonSquared[i] <- epsilon_squared(anovaTab)[[2]][1] -->
+<!-- } -->
+
+<!-- holm <- p.adjust(anovaRawP, method="holm") -->
+<!-- bh <- p.adjust(anovaRawP, method="BH") -->
+
+<!-- effectInterpretation <- interpret_epsilon_squared(epsilonSquared) -->
+
+<!-- nControl <- apply(wb[group=="C",],2,function(x){length(x)-sum(is.na(x))}) -->
+<!-- nPD <- apply(wb[group=="P",],2,function(x){length(x)-sum(is.na(x))}) -->
+
+<!-- resTab <- data.frame(cbind(varNames, nControl, nPD, format(round(anovaRawP,4), scientific=FALSE), round(holm,4), round(bh,4)), round(epsilonSquared,4), effectInterpretation) -->
+<!-- names(resTab) <- c("Variable", "Control n", "PD n", "Raw p-value", "Adj. p-value (FWER)", "Adj. p-value (FDR)", "Effect size (epsilon2)", "Effect size (qualitative)") -->
+<!-- knitr::kable(resTab) -->
+<!-- ``` -->
+
+<!-- ***Notes*** -->
+
+<!-- * p-values are for the difference between the Parkinson's Disease patients and controls. -->
+<!-- * FWER: Family-wise error rate -->
+<!-- * FDR: False discovery rate -->
+<!-- * Effect size ($\epsilon^2$) is the proportion of the variation in the protein expression variable explained by group membership (control *vs* PD).  -->
+
+<!-- ***Field's (2013) qualitative interpretation of effect size*** -->
+
+<!-- * ($\epsilon^2$) < 0.01 - Very small -->
+
+<!-- * 0.01 <= ($\epsilon^2$) < 0.06 - Small -->
+
+<!-- * 0.16 <= ($\epsilon^2$) < 0.14 - Medium -->
+
+<!-- * ($\epsilon^2$) >= 0.14  - Large -->
+
+# ANOVA
+
+```{r}
+anovaRawP <- rep(NA,length(bestModels))
+epsilonSquared <- rep(NA, length(bestModels))
+meanControl <- meanPD <- sdControl <- sdPD <- rep(NA, length(varNames))
+
+for (i in 1:length(bestModels)){
+  anovaTab <- Anova(bestModels[[i]]$bestModel, type="II")
+  anovaRawP[i] <- anovaTab$`Pr(>F)`[row.names(anovaTab)=="group"]
+  epsilonSquared[i] <- epsilon_squared(anovaTab)[[2]][1]
+  rawVar <- eval(parse(text=str_c("wbRaw$",varNames[i])))
+  meanControl[i] <- mean(rawVar[group=="C"], na.rm=TRUE)
+  sdControl[i] <- sd(rawVar[group=="C"], na.rm=TRUE)
+  meanPD[i] <- mean(rawVar[group=="P"], na.rm=TRUE)
+  sdPD[i] <- sd(rawVar[group=="P"], na.rm=TRUE)
+}
+
+holm <- p.adjust(anovaRawP, method="holm")
+bh <- p.adjust(anovaRawP, method="BH")
+
+effectInterpretation <- interpret_epsilon_squared(epsilonSquared)
+
+nControl <- apply(wb[group=="C",],2,function(x){length(x)-sum(is.na(x))})
+nPD <- apply(wb[group=="P",],2,function(x){length(x)-sum(is.na(x))})
+
+resTab <- data.frame(cbind(varNames, nControl, nPD, 
+                           format(round(anovaRawP,4), scientific=FALSE), 
+                           format(round(holm,4), scientific=FALSE), 
+                           format(round(bh,4), scientific=FALSE), 
+                           round(epsilonSquared,4), effectInterpretation,
+                           round(meanControl,4), round(sdControl,4), 
+                           round(meanPD,4), round(sdPD,4)))
+names(resTab) <- c("Variable", "Control n", "PD n", "Raw p-value", "Adj. p-value (FWER)", "Adj. p-value (FDR)", "Effect size (epsilon2)", "Effect size (qualitative)",
+                   "Mean Control", "SD Control", "Mean PD", "SD PD")
+knitr::kable(resTab)
+```
+
+***Notes***
+
+* p-values are for the difference between the Parkinson's Disease patients and controls.
+* FWER: Family-wise error rate
+* FDR: False discovery rate
+* Effect size ($\epsilon^2$) is the proportion of the variation in the protein expression variable explained by group membership (control *vs* PD). 
+* Means and SDs are for raw, rather than Box-Cox transformed data. However, linear modelling and ANOVA used Box-Cox transformed data.
+
+***Field's (2013) qualitative interpretation of effect size***
+
+* ($\epsilon^2$) < 0.01 - Very small
+
+* 0.01 <= ($\epsilon^2$) < 0.06 - Small
+
+* 0.16 <= ($\epsilon^2$) < 0.14 - Medium
+
+* ($\epsilon^2$) >= 0.14  - Large
+
+## Boxplots
+
+### ParCort.Cx43
+```{r}
+par(mfrow=c(1,2))
+boxplot(wbRaw$ParCort.Cx43~group, main="Raw", ylab="Protein expression")
+boxplot(wb$ParCort.Cx43~group, main="Transformed", ylab="Box-Cox transformed protein expression")
+```
+
+### ParCort.GFAP
+```{r}
+par(mfrow=c(1,2))
+boxplot(wbRaw$ParCort.GFAP~group, main="Raw", ylab="Protein expression")
+boxplot(wb$ParCort.GFAP~group, main="Transformed", ylab="Box-Cox transformed protein expression")
+```
+
+### ParCort.ALdh1L1
+```{r}
+par(mfrow=c(1,2))
+boxplot(wbRaw$ParCort.ALdh1L1~group, main="Raw", ylab="Protein expression")
+boxplot(wb$ParCort.ALdh1L1~group, main="Transformed", ylab="Box-Cox transformed protein expression")
+```
+
+### ParCort.GDNF 
+```{r}
+par(mfrow=c(1,2))
+boxplot(wbRaw$ParCort.GDNF~group, main="Raw", ylab="Protein expression")
+boxplot(wb$ParCort.GDNF~group, main="Transformed", ylab="Box-Cox transformed protein expression")
+```
+
+### StriBG.Cx43
+```{r}
+par(mfrow=c(1,2))
+boxplot(wbRaw$StriBG.Cx43~group, main="Raw", ylab="Protein expression")
+boxplot(wb$StriBG.Cx43~group, main="Transformed", ylab="Box-Cox transformed protein expression")
+```
+
+### StriBG.GFAP
+```{r}
+par(mfrow=c(1,2))
+boxplot(wbRaw$StriBG.GFAP~group, main="Raw", ylab="Protein expression")
+boxplot(wb$StriBG.GFAP~group, main="Transformed", ylab="Box-Cox transformed protein expression")
+```
+
+### StriBG.ALdh1L1
+```{r}
+par(mfrow=c(1,2))
+boxplot(wbRaw$StriBG.ALdh1L1~group, main="Raw", ylab="Protein expression")
+boxplot(wb$StriBG.ALdh1L1~group, main="Transformed", ylab="Box-Cox transformed protein expression")
+```
+
+### StriBG.GDNF
+```{r}
+par(mfrow=c(1,2))
+boxplot(wbRaw$StriBG.GDNF~group, main="Raw", ylab="Protein expression")
+boxplot(wb$StriBG.GDNF~group, main="Transformed", ylab="Box-Cox transformed protein expression")
+```
+
+### MidSN.Cx43
+```{r}
+par(mfrow=c(1,2))
+boxplot(wbRaw$MidSN.Cx43~group, main="Raw", ylab="Protein expression")
+boxplot(wb$MidSN.Cx43~group, main="Transformed", ylab="Box-Cox transformed protein expression")
+```
+
+### MidSN.GFAP
+```{r}
+par(mfrow=c(1,2))
+boxplot(wbRaw$MidSN.GFAP~group, main="Raw", ylab="Protein expression")
+boxplot(wb$MidSN.GFAP~group, main="Transformed", ylab="Box-Cox transformed protein expression")
+```
+
+### MidSN.ALdh1L1
+```{r}
+par(mfrow=c(1,2))
+boxplot(wbRaw$MidSN.ALdh1L1~group, main="Raw", ylab="Protein expression")
+boxplot(wb$MidSN.ALdh1L1~group, main="Transformed", ylab="Box-Cox transformed protein expression")
+```
+
+### MidSN.GDNF
+```{r}
+par(mfrow=c(1,2))
+boxplot(wbRaw$MidSN.GDNF~group, main="Raw", ylab="Protein expression")
+boxplot(wb$MidSN.GDNF~group, main="Transformed", ylab="Box-Cox transformed protein expression")
+```
+
+
+# Importance of the other variables in the best linear models
+
+## Models with additional variables
+* ParCort.GFAP	group+Age	
+* ParCort.GDNF	group+batch	
+* StriBG.Cx43	group+batch	
+* StriBG.GDNF	group+Gender	
+
+## ParCort.GFAP	group+Age
+*Model 2 in list of best models.*
+
+Repeat ANOVA:
+```{r}
+anovaTable <- Anova(bestModels[[2]]$bestModel, type="II")
+```
+
+**Raw p-value for age:**
+```{r}
+anovaTable$`Pr(>F)`[row.names(anovaTable)=="Age"]
+```
+
+**Effect size $\epsilon^2$ of age:**
+```{r}
+es <- epsilon_squared(anovaTable)
+(es <- es$Epsilon2_partial[es$Parameter=="Age"])
+```
+
+**Qualitative interpretation of effect size of age:**
+```{r}
+interpret_epsilon_squared(es)
+```
+
+**Scatterplot Age**
+```{r}
+plot(dat$Age, wbRaw$ParCort.GFAP, pch=group, col=groupColor, main="Raw", xlab="Age (years)", ylab="Protein expression")
+plot(dat$Age, wb$ParCort.GFAP, pch=group, col=groupColor, main="Transformed", xlab="Age (years)", ylab="Box-Cox transformed protein expression")
+```
+
+
+## ParCort.GDNF	group+batch
+*Model 4 in list of best models.*
+
+Repeat ANOVA:
+```{r}
+anovaTable <- Anova(bestModels[[4]]$bestModel, type="II")
+```
+
+**Raw p-value for batch:**
+```{r}
+anovaTable$`Pr(>F)`[row.names(anovaTable)=="batch"]
+```
+
+**Effect size $\epsilon^2$ of batch:**
+```{r}
+es <- epsilon_squared(anovaTable)
+(es <- es$Epsilon2_partial[es$Parameter=="batch"])
+```
+
+**Qualitative interpretation of effect size of batch:**
+```{r}
+interpret_epsilon_squared(es)
+```
+
+**Boxplot batch**
+```{r}
+boxplot(wbRaw$ParCort.GDNF~batch, main="Raw", xlab="Batch", ylab="Protein expression")
+boxplot(wb$ParCort.GDNF~batch, main="Transformed", xlab="Batch", ylab="Box-Cox transformed protein expression")
+```
+
+
+## StriBG.Cx43	group+batch
+*Model 5 in list of best models.*
+
+Repeat ANOVA:
+```{r}
+anovaTable <- Anova(bestModels[[5]]$bestModel, type="II")
+```
+
+**Raw p-value for batch:**
+```{r}
+anovaTable$`Pr(>F)`[row.names(anovaTable)=="batch"]
+```
+
+**Effect size $\epsilon^2$ of batch:**
+```{r}
+es <- epsilon_squared(anovaTable)
+(es <- es$Epsilon2_partial[es$Parameter=="batch"])
+```
+
+**Qualitative interpretation of effect size of batch:**
+```{r}
+interpret_epsilon_squared(es)
+```
+
+**Boxplot batch**
+```{r}
+boxplot(wbRaw$StriBG.Cx43~batch, main="Raw", xlab="Batch", ylab="Protein expression")
+boxplot(wb$StriBG.Cx43~batch, main="Transformed", xlab="Batch", ylab="Box-Cox transformed protein expression")
+```
+
+
+## StriBG.GDNF	group+Gender
+*Model 8 in list of best models.*
+
+Repeat ANOVA:
+```{r}
+anovaTable <- Anova(bestModels[[8]]$bestModel, type="II")
+```
+
+**Raw p-value for Gender:**
+```{r}
+anovaTable$`Pr(>F)`[row.names(anovaTable)=="Gender"]
+```
+
+**Effect size $\epsilon^2$ of Gender:**
+```{r}
+es <- epsilon_squared(anovaTable)
+(es <- es$Epsilon2_partial[es$Parameter=="Gender"])
+```
+
+**Qualitative interpretation of effect size of Gender:**
+```{r}
+interpret_epsilon_squared(es)
+```
+
+```{r}
+boxplot(wbRaw$ParCort.GDNF~dat$Gender, main="Raw", xlab="Gender", ylab="Protein expression")
+boxplot(wb$ParCort.GDNF~dat$Gender, main="Transformed", xlab="Gender", ylab="Box-Cox transformed protein expression")
+```
+
+
+# References
+
+```{r}
+citation()
+citation("stringr")
+citation("MASS")
+citation("car")
+citation("AICcmodavg")
+citation("effectsize")
+```
+
+Field, A (2013) Discovering statistics using IBM SPSS Statistics. Fourth Edition. Sage:London.
+

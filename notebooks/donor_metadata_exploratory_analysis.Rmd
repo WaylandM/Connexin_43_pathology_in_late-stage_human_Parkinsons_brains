@@ -1,0 +1,391 @@
+---
+title: "Donor Metadata: Exploratory Analysis"
+output:
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: console
+date: "`r format(Sys.time())`"
+---
+
+# Load libraries
+```{r}
+library(stringr)
+library(ggplot2)
+library(viridis)
+```
+
+# Define functions
+```{r}
+swPval <- function(x) {
+  shapiro.test(x)$p.value
+}
+```
+
+
+# Load data
+Read csv file:
+```{r}
+donors <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/donor_metadata.csv", row.names=1, na.strings="NA")
+```
+Create variable to represent group:
+```{r}
+grp <- c(rep("P", 20),rep("C", 20))
+grpColor <- ifelse(grp=="C", "blue", "red")
+grpPch <- ifelse(grp=="C", 15, 16)
+```
+Set datatype of columns in donors data.frame:
+```{r}
+donors$Dementia...cognitive.impairment <- as.factor(donors$Dementia...cognitive.impairment)
+donors$Depression <- factor(donors$Depression)
+donors$Memory.problems <- as.factor(donors$Memory.problems)
+donors$Sleep.disturbance <- as.factor(donors$Sleep.disturbance)
+donors$Aggression <- as.factor(donors$Aggression)
+donors$Hallucinations <- as.factor(donors$Hallucinations)
+donors$Psychotic.symptoms <- as.factor(donors$Psychotic.symptoms)
+donors$LB.disease.type <- factor(donors$LB.disease.type)
+donors$LB.Braak.stage <- factor(donors$LB.Braak.stage, ordered=TRUE)
+donors$SN.depigmentation <- factor(donors$SN.depigmentation, ordered=TRUE)
+donors$Amyloid.pathology <- factor(donors$Amyloid.pathology, ordered=TRUE)
+donors$Tau.pathology <- factor(donors$Tau.pathology, ordered=TRUE)
+donors$Vessel.disease...CAA <- factor(donors$Vessel.disease...CAA, ordered=TRUE)
+donors$Age <- as.numeric(donors$Age)
+donors$PD.duration <- as.numeric(donors$PD.duration)
+donors$Gender <- as.factor(donors$Gender)
+```
+
+
+# Types of variables
+The variables in the donor metadata can be broadly divided into two types: categorical (discrete/qualitative) and continuous (quantitative). The categorical variables can be further divided into three subtypes: nominal, dichotomous and ordinal. These are described below.
+
+## Categorical variables
+
+### Nominal
+Nominal variables have two or more categories, but do not have an intrinsic order.
+
+* LB disease type
+
+### Dichotomous
+Dichotomous variables are nominal variables with only two categories.
+
+* Dementia / cognitive impairment
+* Depression
+* Sleep disturbance
+* Aggression
+* Hallucinations
+* Psychotic symptoms
+* Gender
+
+### Ordinal
+Ordinal variables have two or more categories that can be ordered or ranked.
+
+* LB Braak stage
+* SN depigmentation
+* Amyloid pathology
+* Tau pathology
+* Vessel disease / CAA
+
+## Continuous variables
+* Age
+* PD duration
+
+# Differences between PD and control groups
+
+## Categorical variables
+
+### LB disease type
+This variable is only applicable to the PD group. There are no data for the control group.
+```{r}
+df <- data.frame(table(donors$LB.disease.type[grp=="P"]))
+names(df) <- c("Disease Type", "Count")
+knitr::kable(df)
+```
+
+### Dementia / cognitive impairment
+```{r}
+knitr::kable(table(donors$Dementia...cognitive.impairment, grp))
+```
+
+```{r}
+df <- data.frame(table(donors$Dementia...cognitive.impairment, grp))
+names(df) <- c("Dementia", "Group", "Count")
+
+ggplot(data=df, aes(x=Group, y=Count, fill=Dementia)) +
+  geom_bar(stat="identity") +
+  scale_fill_brewer(palette = "Dark2")
+```
+
+Fisher's exact test to compare groups:
+```{r}
+fisher.test(donors$Dementia...cognitive.impairment, grp)
+```
+
+### Depression
+```{r}
+knitr::kable(table(donors$Depression, grp))
+```
+
+```{r}
+df <- data.frame(table(donors$Depression, grp))
+names(df) <- c("Depression", "Group", "Count")
+
+ggplot(data=df, aes(x=Group, y=Count, fill=Depression)) +
+  geom_bar(stat="identity") +
+  scale_fill_brewer(palette = "Dark2")
+```
+
+Fisher's exact test to compare groups:
+```{r}
+fisher.test(donors$Depression, grp)
+```
+
+
+### Sleep disturbance
+```{r}
+knitr::kable(table(donors$Sleep.disturbance, grp))
+```
+
+```{r}
+df <- data.frame(table(donors$Sleep.disturbance, grp))
+names(df) <- c("Sleep.disturbance", "Group", "Count")
+
+ggplot(data=df, aes(x=Group, y=Count, fill=Sleep.disturbance)) +
+  geom_bar(stat="identity") +
+  scale_fill_brewer(palette = "Dark2")
+```
+
+Fisher's exact test to compare groups:
+```{r}
+fisher.test(donors$Sleep.disturbance, grp)
+```
+
+### Aggression
+```{r}
+knitr::kable(table(donors$Aggression, grp))
+```
+
+```{r}
+df <- data.frame(table(donors$Aggression, grp))
+names(df) <- c("Aggression", "Group", "Count")
+
+ggplot(data=df, aes(x=Group, y=Count, fill=Aggression)) +
+  geom_bar(stat="identity") +
+  scale_fill_brewer(palette = "Dark2")
+```
+
+Fisher's exact test to compare groups:
+```{r}
+fisher.test(donors$Aggression, grp)
+```
+
+### Hallucinations
+```{r}
+knitr::kable(table(donors$Hallucinations, grp))
+```
+
+```{r}
+df <- data.frame(table(donors$Hallucinations, grp))
+names(df) <- c("Hallucinations", "Group", "Count")
+
+ggplot(data=df, aes(x=Group, y=Count, fill=Hallucinations)) +
+  geom_bar(stat="identity") +
+  scale_fill_brewer(palette = "Dark2")
+```
+
+Fisher's exact test to compare groups:
+```{r}
+fisher.test(donors$Hallucinations, grp)
+```
+
+### Psychotic symptoms
+```{r}
+knitr::kable(table(donors$Psychotic.symptoms, grp))
+```
+
+```{r}
+df <- data.frame(table(donors$Psychotic.symptoms, grp))
+names(df) <- c("Psychotic.symptoms", "Group", "Count")
+
+ggplot(data=df, aes(x=Group, y=Count, fill=Psychotic.symptoms)) +
+  geom_bar(stat="identity") +
+  scale_fill_brewer(palette = "Dark2")
+```
+
+Fisher's exact test to compare groups:
+```{r}
+fisher.test(donors$Psychotic.symptoms, grp)
+```
+
+### Gender
+```{r}
+knitr::kable(table(donors$Gender, grp))
+```
+
+```{r}
+df <- data.frame(table(donors$Gender, grp))
+names(df) <- c("Gender", "Group", "Count")
+
+ggplot(data=df, aes(x=Group, y=Count, fill=Gender)) +
+  geom_bar(stat="identity") +
+  scale_fill_brewer(palette = "Dark2")
+```
+
+Fisher's exact test to compare groups:
+```{r}
+fisher.test(donors$Gender, grp)
+```
+
+### LB Braak stage
+```{r}
+knitr::kable(table(donors$LB.Braak.stage, grp))
+```
+
+```{r}
+df <- data.frame(table(donors$LB.Braak.stage, grp))
+names(df) <- c("LB.Braak.stage", "Group", "Count")
+
+ggplot(data=df, aes(x=Group, y=Count, fill=LB.Braak.stage)) +
+  geom_bar(stat="identity") +
+  scale_fill_brewer(palette = "Dark2")
+```
+
+Fisher's exact test to compare groups:
+```{r}
+fisher.test(donors$LB.Braak.stage, grp)
+```
+
+### SN depigmentation
+SN depigmentation only recorded for PD donors. 
+```{r}
+df <- data.frame(table(donors$SN.depigmentation[grp=="P"]))
+names(df) <- c("SN.depigmentation", "Count")
+knitr::kable(df)
+```
+
+### Amyloid pathology
+```{r}
+knitr::kable(table(donors$Amyloid.pathology, grp))
+```
+
+```{r}
+df <- data.frame(table(donors$Amyloid.pathology, grp))
+names(df) <- c("Amyloid.pathology", "Group", "Count")
+
+ggplot(data=df, aes(x=Group, y=Count, fill=Amyloid.pathology)) +
+  geom_bar(stat="identity") +
+  scale_fill_brewer(palette = "Dark2")
+```
+
+Fisher's exact test to compare groups:
+```{r}
+fisher.test(donors$Amyloid.pathology, grp)
+```
+
+### Tau pathology
+```{r}
+knitr::kable(table(donors$Tau.pathology, grp))
+```
+
+```{r}
+df <- data.frame(table(donors$Tau.pathology, grp))
+names(df) <- c("Tau.pathology", "Group", "Count")
+
+ggplot(data=df, aes(x=Group, y=Count, fill=Tau.pathology)) +
+  geom_bar(stat="identity") +
+  scale_fill_brewer(palette = "Dark2")
+```
+
+Fisher's exact test to compare groups:
+```{r}
+fisher.test(donors$Tau.pathology, grp)
+```
+
+### Vessel disease / CAA
+```{r}
+knitr::kable(table(donors$Vessel.disease...CAA, grp))
+```
+
+```{r}
+df <- data.frame(table(donors$Vessel.disease...CAA, grp))
+names(df) <- c("Vessel.disease...CAA", "Group", "Count")
+
+ggplot(data=df, aes(x=Group, y=Count, fill=Vessel.disease...CAA)) +
+  geom_bar(stat="identity") +
+  scale_fill_brewer(palette = "Dark2")
+```
+
+Fisher's exact test to compare groups:
+```{r}
+fisher.test(donors$Vessel.disease...CAA, grp)
+```
+
+
+## Continuous variables
+
+
+### Age
+***N.B. age is missing for one donor from the control group***
+
+Boxplot:
+```{r}
+boxplot(donors$Age ~ grp, ylab="Age", xlab="Group")
+```
+
+Quantile-Quantile plots:
+```{r}
+qqnorm(donors$Age[grp=="C"], main="Control")
+qqline(donors$Age[grp=="C"], col="red")
+qqnorm(donors$Age[grp=="P"], main="PD")
+qqline(donors$Age[grp=="P"], col="red")
+```
+
+Shapiro-Wilk normality test applied by group:
+```{r}
+swPval(donors$Age[grp=="C"])
+swPval(donors$Age[grp=="P"])
+```
+
+As data for the control group do not follow a normal distribution, we will compare the two groups using the Wilcoxon Rank Sum test.
+```{r}
+wilcox.test(donors$Age ~grp)
+```
+
+### PD duration
+PD duration by definition only is applicable to the Parkinson's Disease group.
+
+Boxplot:
+```{r}
+boxplot(donors$PD.duration)
+```
+
+Quantile-Quantile plot:
+```{r}
+qqnorm(donors$PD.duration)
+qqline(donors$PD.duration, col="red")
+```
+
+Shapiro-Wilk normality test:
+```{r}
+swPval(donors$PD.duration)
+```
+
+
+# Any evidence of correlation between variables?
+Let's use a scatterplot matrix to look for evidence of a relationship between pairs of ordinal and continuous variables. Key: blue squares = control; red circles = PD. 
+
+Scatterplot matrix of data from all donors.
+```{r}
+pairs(donors[,c(11:17)], col=grpColor, pch=grpPch)
+```
+
+Scatterplot matrix of data from PD group.
+```{r}
+pairs(donors[grp=="P",c(11:17)], col=grpColor[grp=="P"], pch=grpPch[grp=="P"])
+```
+
+Scatterplot matrix of data from control group.
+```{r}
+pairs(donors[grp=="C",c(13:16)], col=grpColor[grp=="C"], pch=grpPch[grp=="C"])
+```
+
+Differences between the two groups are apparent, but no obvious correlation between any pair of variables.

@@ -1,0 +1,102 @@
+---
+title: "Western Blot Data: Analysis of Batch Effects"
+output:
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: console
+date: "`r format(Sys.time())`"
+---
+
+# Load libraries
+```{r}
+library(stringr)
+```
+
+# Load data
+
+```{r}
+wb <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/WB_protein_levels.csv", row.names=1)
+
+grp <- c(rep("C", 20),rep("P", 20))
+
+plotColours <- gsub("C", "blue", grp)
+plotColours <- gsub("P", "red", plotColours)
+
+batch <- c(rep("1", 6), rep("2",6), rep("3",6), rep("4",2))
+batch <- rep(batch,2)
+```
+
+# Graphical analysis of batch effects
+## Boxplots
+```{r, results="asis"}
+for (i in 1:dim(wb)[2]){
+  boxplot(wb[,i]~batch, main=str_c(names(wb)[i]), xlab="Batch", ylab="Protein Expression")
+}
+```
+
+## Principal Component Analysis (PCA)
+Plotting symbol indicates batch. Colour of plotting symbol indicates group (blue=control, red=PD).
+
+### Parietal Cortex
+```{r}
+allPCA <- prcomp(wb[,c(1:4)], scale=T)
+plot(allPCA$x[,c(1,2)], col=plotColours, pch=batch)
+```
+
+### Striatum (Basal Ganglion)
+```{r}
+allPCA <- prcomp(wb[,c(5:8)], scale=T)
+plot(allPCA$x[,c(1,2)], col=plotColours, pch=batch)
+```
+
+### Substantia Nigra (mid brain)
+```{r}
+allPCA <- prcomp(wb[c(1:3, 5:14,16:40),c(9:12)], scale=T)
+plot(allPCA$x[,c(1,2)], col=plotColours[c(1:3, 5:14,16:40)], pch=batch[c(1:3, 5:14,16:40)])
+```
+
+
+
+# Statistical analysis of batch effects
+
+## Are data normally distributed within batches?
+We use the Shapiro-Wilk test for normality.
+```{r}
+swPval <- function(x) {
+  shapiro.test(x)$p.value
+}
+
+sw1 <- apply(wb[batch=="1",], 2, swPval)
+sw2 <- apply(wb[batch=="2",], 2, swPval)
+sw3 <- apply(wb[batch=="3",], 2, swPval)
+sw4 <- apply(wb[batch=="4",], 2, swPval)
+```
+
+Adjust p-values to account for multiple tests
+```{r}
+swRawP <- c(sw1, sw2, sw3, sw4)
+swAdjP <- p.adjust(swRawP, method="holm")
+sw1adj <- swAdjP[1:12]
+sw2adj <- swAdjP[23:24]
+sw3adj <- swAdjP[25:36]
+sw4adj <- swAdjP[37:48]
+```
+
+```{r}
+swTable <- data.frame(cbind(sw1adj, sw2adj, sw3adj, sw4adj))
+names(swTable) <- c("Batch 1 adj. p", "Batch 2 adj. p", "Batch 3 adj. p", "Batch 4 adj. p")
+knitr::kable(swTable)
+```
+
+## Compare batches using ANOVA
+Since data do not significantly deviate from a normal distribution we will use ANOVA to compare batches.
+```{r}
+aovP <- function(x, group) {
+  summary(aov(x~group))[[1]][[1,'Pr(>F)']]
+}
+aovBatchRaw <- apply(wb, 2, aovP, group=batch)
+aovBatchTable <- data.frame(aovBatchRaw, p.adjust(aovBatchRaw, method="holm"))
+names(aovBatchTable) <- c("raw p-value", "adjusted p-value")
+knitr::kable(aovBatchTable)
+```

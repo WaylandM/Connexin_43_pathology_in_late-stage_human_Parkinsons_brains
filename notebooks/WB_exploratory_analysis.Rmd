@@ -1,0 +1,142 @@
+---
+title: "Western Blot Data: Exploratory Analysis"
+output:
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: console
+date: "`r format(Sys.time())`"
+---
+
+# Load libraries
+```{r}
+library(stringr)
+library(corrplot)
+```
+
+
+# Define functions
+```{r}
+checkNormGraph <- function(x, xName){
+  cat("\n\n### ", xName,"\n")
+  qqnorm(x[1:20], main=str_c("QQ plot of ", xName, " control"))
+  qqline(x[1:20], col="red")
+  qqnorm(x[21:40], main=str_c("QQ plot of ", xName, " PD"))
+  qqline(x[21:40], col="red")
+  hist(x[1:20], main=str_c("Histogram of ", xName, " control"), xlab="Protein Expression")
+  hist(x[21:40], main=str_c("Histogram of ", xName, " PD"), xlab="Protein Expression")
+  boxplot(x~grp, main=str_c("Boxplot of ", xName), xlab="Group", ylab="Protein Expression")
+}
+
+swPval <- function(x) {
+  shapiro.test(x)$p.value
+}
+```
+
+# Load data
+
+```{r}
+wb <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/WB_protein_levels.csv", row.names=1)
+
+grp <- c(rep("C", 20),rep("P", 20))
+```
+
+# Principal Component Analysis (PCA)
+
+## All data
+Data incomplete for rows 4 and 15 (no MidSN), so we will remove these rows
+```{r}
+plotColours <- gsub("C", "blue", grp)
+plotColours <- gsub("P", "red", plotColours)
+allPCA <- prcomp(wb[c(1:3, 5:14,16:40),], scale=T)
+plot(allPCA$x[,c(1,2)], col=plotColours[c(1:3, 5:14,16:40)], pch=grp[c(1:3, 5:14,16:40)])
+```
+
+## Parietal Cortex
+```{r}
+allPCA <- prcomp(wb[,c(1:4)], scale=T)
+plot(allPCA$x[,c(1,2)], col=plotColours, pch=grp)
+```
+
+## Striatum (Basal Ganglion)
+```{r}
+allPCA <- prcomp(wb[,c(5:8)], scale=T)
+plot(allPCA$x[,c(1,2)], col=plotColours, pch=grp)
+```
+
+## Substantia Nigra (mid brain)
+```{r}
+allPCA <- prcomp(wb[c(1:3, 5:14,16:40),c(9:12)], scale=T)
+plot(allPCA$x[,c(1,2)], col=plotColours[c(1:3, 5:14,16:40)], pch=grp[c(1:3, 5:14,16:40)])
+```
+
+
+# Do variables follow a normal distribution?
+
+## Graphical analysis of normality
+
+```{r, results="asis"}
+for (i in 1:dim(wb)[2]){
+  checkNormGraph(wb[,i], names(wb)[i])
+}
+
+```
+
+## Statistical analysis of normality
+
+We use the Shapiro-Wilk test for normality.
+```{r}
+swC <- apply(wb[1:20,], 2, swPval)
+swPD <- apply(wb[21:40,], 2, swPval)
+```
+
+Adjust p-values to account for multiple tests
+```{r}
+swRawP <- c(swC, swPD)
+swAdjP <- p.adjust(swRawP, method="holm")
+swCadj <- swAdjP[1:12]
+swPDadj <- swAdjP[13:24]
+parametricTest <- swCadj>0.05 & swPDadj>0.05
+parametricTestAppropriate <- ifelse(parametricTest, "yes", "no")
+```
+
+```{r}
+swTable <- data.frame(cbind(swC, swCadj, swPD, swPDadj, parametricTestAppropriate))
+names(swTable) <- c("Control raw p", "Control adj. p", "PD raw p", "PD adj. p", "Parametric test appropriate?")
+knitr::kable(swTable)
+```
+
+# Statistical comparison PD vs control
+
+```{r}
+statComp <- function(x, group, paramTest){
+  if(paramTest){
+    return(t.test(x~group)$p.value)
+  }else{
+    return(wilcox.test(x~group)$p.value)
+  }
+}
+
+#rawP <- apply(wb, 2, statComp, group=grp, paramTest=parametricTest)
+
+rawP<-vector()
+for (i in 1:dim(wb)[2]){
+  rawP <- c(rawP, statComp(x=wb[,i], group=grp, paramTest=parametricTest[i]))
+}
+
+
+adjP <- p.adjust(rawP, method="holm")
+testType <- ifelse(parametricTest, "t-test", "Mann-Whitney")
+testTable <- data.frame(cbind(testType, rawP, adjP))
+names(testTable) <- c("Test", "raw p-value", "adj. p-value")
+knitr::kable(testTable)
+```
+
+# Correlation between variables
+We'll use Spearman's rho statistic which measures the strength and direction of any monotonic association between two variables. *N.B.* relationship does not need to be linear.
+
+```{r}
+corMat <- cor(wb, use="pairwise.complete.obs", method="spearman")
+corrplot(corMat, method="circle")
+knitr::kable(corMat)
+```

@@ -1,0 +1,130 @@
+---
+title: "Western Blot Data: Box-Cox Transformation"
+output:
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: console
+date: "`r format(Sys.time())`"
+---
+
+# Load libraries
+```{r}
+library(stringr)
+library(corrplot)
+library(MASS)
+```
+
+
+# Define functions
+```{r}
+checkNormGraph <- function(x, tx, xName){
+  cat("\n\n### ", xName,"\n")
+  par(mfrow=c(1,2))
+  qqnorm(x[1:20], main=str_c("Control raw"))
+  qqline(x[1:20], col="red")
+  qqnorm(x[21:40], main=str_c("PD raw"))
+  qqline(x[21:40], col="red")
+  qqnorm(tx[1:20], main=str_c("Control transformed"))
+  qqline(tx[1:20], col="red")
+  qqnorm(tx[21:40], main=str_c("PD transformed"))
+  qqline(tx[21:40], col="red")
+
+  par(mfrow=c(1,2))
+  boxplot(x~grp, main="Raw", xlab="Group", ylab="Protein Expression")
+  boxplot(tx~grp, main="Transformed", xlab="Group", ylab="Protein Expression")
+}
+
+swPval <- function(x) {
+  shapiro.test(x)$p.value
+}
+
+getBoxCoxLambda <- function(varName, dfName) {
+  bc <- eval(parse(text=str_c("boxcox(lm(",varName,"~ 1, data=",dfName,"),plotit=FALSE)")))
+  lambda <- bc$x[which.max(bc$y)]
+  return(lambda)
+}
+
+
+```
+
+# Load data
+
+```{r}
+wb <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/WB_protein_levels.csv", row.names=1)
+
+grp <- c(rep("C", 20),rep("P", 20))
+```
+
+# Log transform data
+
+# Box-Cox transformation
+We'll start by finding the Box-Cox lambda for each variable. We cannot use this method for **StriBG.GDNF**, because it contains two zeroes.
+```{r}
+bcLambda <- sapply(names(wb)[c(1:7,9:12)],getBoxCoxLambda,dfName="wb")
+```
+
+Perform Box-Cox transformation on each variable (except **StriBG.GDNF**) using lambda calculated in the previous step.
+$$
+y(\lambda)=
+\begin{cases}
+\{\frac{y^\lambda-1}{\lambda},\ \text{ if}\ \lambda\neq 0; \\
+log\ y,\ \text{if}\ \lambda = 0.
+\end{cases}
+$$
+
+```{r}
+wbT <- wb[,c(1:7,9:12)]
+for (i in 1:length(bcLambda)){
+  if(bcLambda[i]!=0){
+    wbT[,i] <- (wbT[,i]^bcLambda[i]-1)/bcLambda[i]
+  }else{
+    wbT[,i]<-log(wbT[,i])
+  }
+}
+
+```
+
+As we can't perform a Box-Cox transformation of **StriBG.GDNF**, we'll use the transformation log(x+1).
+```{r}
+StriBG.GDNF <- log1p(wb$StriBG.GDNF)
+```
+
+Reassemble data.frame:
+```{r}
+wbT <- cbind(wbT[,1:7], StriBG.GDNF, wbT[,8:11])
+```
+
+# Graphical analysis of normality
+
+```{r, results="asis"}
+for (i in 1:dim(wb)[2]){
+  checkNormGraph(wb[,i], wbT[,i], names(wb)[i])
+}
+
+```
+
+# Statistical analysis of normality
+
+We use the Shapiro-Wilk test for normality.
+```{r}
+swC.raw <- apply(wb[1:20,], 2, swPval)
+swPD.raw <- apply(wb[21:40,], 2, swPval)
+swC.t <- apply(wbT[1:20,], 2, swPval)
+swPD.t <- apply(wbT[21:40,], 2, swPval)
+#log2transform <- ((swC.log2>swC.raw)&(swPD.log2>swPD.raw))&(swC.raw<0.05|swPD.raw<0.05)
+```
+
+```{r}
+#swTable <- data.frame(cbind(swC.raw, swC.log2, swPD.raw, swPD.log2, ifelse(log2transform,"yes","no")))
+swTable <- data.frame(cbind(swC.raw, swC.t, swPD.raw, swPD.t, bcLambda))
+#names(swTable) <- c("Raw control p", "Transformed control p", "Raw PD p", "Transformed PD p", "Log2 transform?")
+names(swTable) <- c("Raw control p", "Transformed control p", "Raw PD p", "Transformed PD p", "Box-Cox Lambda")
+knitr::kable(swTable)
+```
+
+
+# Write transformed data to file
+```{r}
+write.csv(wbT, "~/Cam_Dropbox/Nat_Hastings/PD_data/WB_protein_levels_BoxCox_transformed.csv", row.names=T, quote=F)
+```
