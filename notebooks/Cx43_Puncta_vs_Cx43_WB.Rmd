@@ -31,14 +31,14 @@ library(Hmisc)
 
 # Load data
 ```{r}
-donors <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/donor_metadata.csv", row.names=1, na.strings="NA")
+donors <- read.csv("../data/donor_metadata.csv", row.names=1, na.strings="NA")
 
-puncta <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/Cx43 puncta per cell - Sheet1.csv", header=T, na.string="NA")
+puncta <- read.csv("../data/Cx43 puncta per cell - Sheet1.csv", header=T, na.string="NA")
 puncta <- puncta[c(18:29, 10:17, 1:9, 30:40),]
 row.names(puncta) <- puncta$Donor.ID
 puncta$Donor.ID <- NULL
 
-wb <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/WB_protein_levels.csv", row.names=1)
+wb <- read.csv("../data/WB_protein_levels.csv", row.names=1)
 wb <- wb[c(21:40,1:20),]
 
 group <- c(rep("P", 20),rep("C", 20))

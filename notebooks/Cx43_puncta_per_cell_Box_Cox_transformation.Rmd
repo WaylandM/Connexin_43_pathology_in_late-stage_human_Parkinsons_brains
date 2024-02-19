@@ -52,7 +52,7 @@ getBoxCoxLambda <- function(varName, dfName) {
 
 ```{r}
 
-puncta <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/Cx43 puncta per cell - Sheet1.csv", header=T, na.string="NA")
+puncta <- read.csv("../data/Cx43 puncta per cell - Sheet1.csv", header=T, na.string="NA")
 
 puncta <- puncta[c(18:29, 10:17, 1:9, 30:40),]
 row.names(puncta) <- puncta$Donor.ID
@@ -121,5 +121,5 @@ knitr::kable(swTable)
 
 # Write transformed data to file
 ```{r}
-write.csv(punctaT, "~/Cam_Dropbox/Nat_Hastings/PD_data/Cx43_puncta_per_cell_BoxCox_transformed.csv", row.names=T, quote=F)
+write.csv(punctaT, "../data/Cx43_puncta_per_cell_BoxCox_transformed.csv", row.names=T, quote=F)
 ```

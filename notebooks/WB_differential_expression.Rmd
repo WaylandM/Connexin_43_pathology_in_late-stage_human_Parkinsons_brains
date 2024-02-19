@@ -74,7 +74,7 @@ donors <- read.csv("../data/donor_metadata.csv", row.names=1, na.strings="NA")
 
 wb <- read.csv("../data/WB_protein_levels_BoxCox_transformed.csv", row.names=1)
 wb <- wb[c(21:40,1:20),]
-wbRaw <- read.csv("~/Cam_Dropbox/Nat_Hastings/PD_data/WB_protein_levels.csv", row.names=1)
+wbRaw <- read.csv("../data/WB_protein_levels.csv", row.names=1)
 wbRaw <- wbRaw[c(21:40,1:20),]
 
 group <- c(rep("P", 20),rep("C", 20))
